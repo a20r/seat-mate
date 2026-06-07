@@ -1,0 +1,200 @@
+// server.js — SeatMate API + static host.
+// One shared in-memory state (persisted to disk) that every rater talks to, so
+// multiple people can swipe at the same time and feed the same affinity model.
+
+import express from 'express';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+
+import { loadGuests, saveGuests, loadState, saveState, flush } from './lib/store.js';
+import {
+  applyVote,
+  getPair,
+  neighborScore,
+  pickEgo,
+  pickCandidate,
+  shouldSwitchEgo,
+  bestOrdering,
+  rankedPairs,
+} from './lib/affinity.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const app = express();
+app.use(express.json());
+app.use(express.static(join(__dirname, 'public')));
+
+let guests = loadGuests();
+const state = loadState();
+
+const ACTIVE_MS = 60 * 1000; // a rater is "active" if seen in the last minute
+const now = () => Date.now();
+
+function publicGuest(id) {
+  return guests.find((g) => g.id === id) || null;
+}
+
+// Egos / candidates currently in front of *other* active raters, so we can
+// spread parallel raters across the guest list instead of doubling up.
+function activeAssignments(exceptRaterId) {
+  const egos = new Set();
+  const candidatesByEgo = new Map();
+  for (const [rid, r] of Object.entries(state.raters)) {
+    if (rid === exceptRaterId) continue;
+    if (now() - (r.lastSeen || 0) > ACTIVE_MS) continue;
+    if (r.egoId) {
+      egos.add(r.egoId);
+      if (r.currentCandidate) {
+        if (!candidatesByEgo.has(r.egoId)) candidatesByEgo.set(r.egoId, new Set());
+        candidatesByEgo.get(r.egoId).add(r.currentCandidate);
+      }
+    }
+  }
+  return { egos, candidatesByEgo };
+}
+
+function progress() {
+  const n = guests.length;
+  const totalPairs = (n * (n - 1)) / 2;
+  let totalVotes = 0;
+  let pairsSeen = 0;
+  for (const p of Object.values(state.pairs)) {
+    totalVotes += p.votes;
+    if (p.votes > 0) pairsSeen += 1;
+  }
+  return {
+    totalVotes,
+    pairsSeen,
+    totalPairs,
+    coverage: totalPairs ? pairsSeen / totalPairs : 0,
+    guests: n,
+  };
+}
+
+// Choose the next card for a rater: maybe rotate the ego, then pick the most
+// informative candidate to pair them against.
+function nextCard(raterId) {
+  if (guests.length < 2) return { needGuests: true };
+  const rater = state.raters[raterId];
+  if (!rater) return { error: 'unknown rater' };
+
+  const { egos, candidatesByEgo } = activeAssignments(raterId);
+
+  if (!rater.egoId || shouldSwitchEgo(state.pairs, guests, rater.egoId, rater.cardsThisSession || 0)) {
+    rater.egoId = pickEgo(state.pairs, guests, { exclude: egos });
+    rater.cardsThisSession = 0;
+  }
+
+  const avoid = new Set();
+  if (rater.lastCandidate) avoid.add(rater.lastCandidate);
+  const others = candidatesByEgo.get(rater.egoId);
+  if (others) for (const c of others) avoid.add(c);
+
+  const candidateId = pickCandidate(state.pairs, guests, rater.egoId, { avoid });
+  rater.cardsThisSession = (rater.cardsThisSession || 0) + 1;
+  rater.currentCandidate = candidateId;
+  rater.lastCandidate = candidateId;
+  rater.lastSeen = now();
+  saveState(state);
+
+  const pair = getPair(state.pairs, rater.egoId, candidateId);
+  return {
+    ego: publicGuest(rater.egoId),
+    candidate: publicGuest(candidateId),
+    pair: { votes: pair.votes, score: neighborScore(pair) },
+    progress: progress(),
+  };
+}
+
+// ---- routes -----------------------------------------------------------------
+app.post('/api/raters', (req, res) => {
+  const name = (req.body?.name || '').toString().trim().slice(0, 40) || 'Anonymous';
+  const raterId = randomUUID();
+  state.raters[raterId] = { name, votes: 0, cardsThisSession: 0, lastSeen: now() };
+  saveState(state);
+  res.json({ raterId, name });
+});
+
+app.get('/api/card', (req, res) => {
+  const raterId = req.query.raterId;
+  if (!raterId || !state.raters[raterId]) return res.status(400).json({ error: 'unknown rater' });
+  res.json(nextCard(raterId));
+});
+
+app.post('/api/vote', (req, res) => {
+  const { raterId, egoId, candidateId, direction } = req.body || {};
+  const rater = state.raters[raterId];
+  if (!rater) return res.status(400).json({ error: 'unknown rater' });
+  if (!publicGuest(egoId) || !publicGuest(candidateId)) return res.status(400).json({ error: 'unknown guest' });
+  if (direction !== 'left' && direction !== 'right') return res.status(400).json({ error: 'bad direction' });
+
+  applyVote(state.pairs, egoId, candidateId, direction);
+  rater.votes = (rater.votes || 0) + 1;
+  rater.lastSeen = now();
+  state.voteLog.push({ t: now(), by: rater.name, egoId, candidateId, direction });
+  if (state.voteLog.length > 500) state.voteLog.splice(0, state.voteLog.length - 500);
+  saveState(state);
+
+  res.json({ ok: true, next: nextCard(raterId) });
+});
+
+app.get('/api/results', (_req, res) => {
+  const { order, score } = bestOrdering(state.pairs, guests);
+  const byId = new Map(guests.map((g) => [g.id, g]));
+  const seating = order.map((id, i) => {
+    const g = byId.get(id);
+    const left = i > 0 ? neighborScore(getPair(state.pairs, order[i - 1], id)) : null;
+    const right = i < order.length - 1 ? neighborScore(getPair(state.pairs, id, order[i + 1])) : null;
+    return { id, name: g?.name, neighborLeft: left, neighborRight: right };
+  });
+  const ranked = rankedPairs(state.pairs, guests);
+  res.json({
+    seating,
+    score,
+    progress: progress(),
+    topPairs: ranked.slice(0, 8),
+    avoidPairs: ranked.slice(-8).reverse(),
+    raters: Object.values(state.raters).map((r) => ({ name: r.name, votes: r.votes || 0 })),
+  });
+});
+
+app.get('/api/guests', (_req, res) => res.json({ guests }));
+
+app.post('/api/guests', (req, res) => {
+  const b = req.body || {};
+  const name = (b.name || '').toString().trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const guest = {
+    id: randomUUID().slice(0, 8),
+    name,
+    side: (b.side || '').toString().slice(0, 40),
+    relationship: (b.relationship || '').toString().slice(0, 60),
+    notes: (b.notes || '').toString().slice(0, 280),
+    funFact: (b.funFact || '').toString().slice(0, 280),
+  };
+  guests.push(guest);
+  saveGuests(guests);
+  res.json({ guest });
+});
+
+// Live affinity matrix for the heatmap.
+app.get('/api/matrix', (_req, res) => {
+  const ids = guests.map((g) => g.id);
+  const matrix = ids.map((a) =>
+    ids.map((b) => (a === b ? null : { score: neighborScore(getPair(state.pairs, a, b)), votes: getPair(state.pairs, a, b).votes })),
+  );
+  res.json({ guests: guests.map((g) => ({ id: g.id, name: g.name })), matrix });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`\n  🪑  SeatMate running:  http://localhost:${PORT}\n`);
+  console.log(`  Loaded ${guests.length} guests. Open the URL on your iPhone (same Wi-Fi) to start swiping.\n`);
+});
+
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => {
+    flush();
+    process.exit(0);
+  });
+}

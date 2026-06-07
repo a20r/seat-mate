@@ -142,3 +142,7 @@ vite.config.ts.timestamp-*
 public/
 resources/
 .hugo_build.lock
+
+# SeatMate runtime
+node_modules/
+data/state.json

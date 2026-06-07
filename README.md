@@ -1,50 +1,64 @@
-# Wedding Site
+# 🪑 SeatMate
 
-A modern, earth-toned single-page wedding website for celebrating at Lareau Farm in Waitsfield, Vermont on July 11, 2026. Built with [Hugo](https://gohugo.io/) using a custom theme inspired by Green Mountain vibes (think warm wood, sage greens, and soft neutrals).
+**Tinder for long-table seating charts**, with an ELO-flavored rating system.
 
-## Getting started
+You're shown one guest (the **ego**) and a card for another guest. Swipe **right**
+if they'd be great neighbors, **left** if they wouldn't. Lots of people can swipe
+at the same time — every vote feeds one shared affinity model. Hit **End** to see
+the affinities and an auto-generated suggested seating order.
 
-```bash
-# Install dependencies (Hugo extended) if you don't already have it
-hugo version
-
-# Run the development server with live reload
-hugo server -D
-```
-
-Navigate to `http://localhost:1313` to preview the site. The sticky navigation includes scroll-spy highlighting to guide guests as they explore each section.
-
-## Customizing content
-
-Most content is controlled through `hugo.toml` so you can quickly update details without touching layout code.
-
-- **Names, date, location, and tagline:** `params.coupleNames`, `params.weddingDate`, `params.weddingLocation`, and `params.heroTagline`
-- **Schedule:** Update the `[[params.schedule]]` entries
-- **Travel tips, lodging ideas, registries, and MTB trails:** Update the corresponding parameter arrays
-- **RSVP button:** Point `params.rsvpLink` at your actual form or email
-
-If you need to adjust imagery, edit `themes/lareau-earth/assets/css/main.css` (the hero uses an Unsplash background URL you can swap out for your own photo).
-
-After making changes, run `hugo` to generate the static `public/` directory.
+## Run it
 
 ```bash
-hugo
+npm install
+npm start
 ```
 
-## Deploying to GitHub Pages
+Then open `http://localhost:3000`. To swipe from your iPhone, open
+`http://<your-computer-ip>:3000` while on the same Wi‑Fi (or deploy the folder to
+any Node host — Render, Railway, Fly, Glitch — no database required).
 
-1. Update the `baseURL` value in `hugo.toml` to match your repository (e.g. `https://<username>.github.io/wedding-site/`).
-2. Commit and push the site to your GitHub repository.
-3. In GitHub, enable Pages for the repository and select the `gh-pages` branch (or configure GitHub Actions to publish the `public/` folder).
+## Guest list
 
-For an example workflow, see the [official Hugo GitHub Pages guide](https://gohugo.io/hosting-and-deployment/hosting-on-github/).
+Edit `data/guests.json` (id, name, side, relationship, notes, funFact) before
+you start, or add guests live via `POST /api/guests`. Card content is intentionally
+simple for now — enrich the fields later and the UI picks them up automatically.
 
-## Theme
+## How it works
 
-The custom `lareau-earth` theme lives in `themes/lareau-earth` and includes:
+### ELO-like affinity per pair
+Each pair `(A, B)` carries an affinity score. A swipe is treated as a Bernoulli
+outcome (right = 1, left = 0). We nudge the score toward the result with a
+**decaying K-factor** — big early adjustments, tiny ones once a pair has many
+votes — exactly like an ELO rating settling as games are played. The displayed
+"% match" is `sigmoid(affinity)`. Because the score is shared and converges, many
+raters voting in parallel simply sharpen the same estimate.
 
-- Sticky, scroll-spy navigation with smooth section transitions
-- Earth-toned palette inspired by Vermont forests and farmhouses
-- Custom layouts for the single-page experience, including a hidden-in-plain-sight MTB section for fellow riders
+### Automatic ego switching (the cool part)
+Every guest has a *remaining uncertainty* = the summed information value of the
+pairs touching them (unseen pairs count most; then undecided, lightly-voted
+pairs). The app anchors you to the guest with the **most uncertainty left**, keeps
+feeding you their most informative candidates, and **moves the ego on its own**
+once that uncertainty drops or you've seen a batch. Parallel raters are pushed
+toward *different* egos so the crowd covers the guest list efficiently — this is
+active learning over a partially-ordered set.
 
-Feel free to adapt or extend the theme to fit your celebration!
+### Finding the best ordering
+A long table is a path where everyone has up to two neighbors. We look for the
+ordering that **maximizes total adjacent affinity** (a max-weight Hamiltonian
+path) using greedy nearest-neighbor starts polished with 2-opt — the best linear
+extension of the preferences gathered so far. That ordering, the power pairs, and
+the keep-apart pairs all show up on the **End / Affinities** screen.
+
+## API
+
+| Method | Path            | Purpose                                  |
+| ------ | --------------- | ---------------------------------------- |
+| POST   | `/api/raters`   | Register a rater, get a `raterId`        |
+| GET    | `/api/card`     | Next ego + candidate card to rate        |
+| POST   | `/api/vote`     | Submit a swipe, get the next card        |
+| GET    | `/api/results`  | Suggested seating, top/avoid pairs, stats|
+| GET    | `/api/matrix`   | Full affinity matrix                     |
+| GET/POST | `/api/guests` | List / add guests                        |
+
+State persists to `data/state.json` (git-ignored). Delete it to reset all votes.
