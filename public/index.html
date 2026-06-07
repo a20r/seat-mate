@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#1f2421" />
+    <title>SeatMate — long-table matchmaker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Join -->
+    <section id="view-join" class="view">
+      <div class="join-card">
+        <div class="logo">🪑💚</div>
+        <h1>SeatMate</h1>
+        <p class="tagline">Swipe to design the long table. Right if they'd be great neighbors, left if not.</p>
+        <input id="nameInput" type="text" placeholder="Your name" autocomplete="name" maxlength="40" />
+        <button id="joinBtn" class="primary">Start swiping</button>
+        <button id="resultsLinkBtn" class="ghost">See the affinities →</button>
+      </div>
+    </section>
+
+    <!-- Swipe -->
+    <section id="view-swipe" class="view hidden">
+      <header class="topbar">
+        <button id="backToJoin" class="icon-btn" aria-label="Home">‹</button>
+        <div class="ego-line">Who should sit next to<br /><strong id="egoName">—</strong>?</div>
+        <button id="endBtn" class="end-btn">End</button>
+      </header>
+
+      <div class="progress">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+      <div id="progressText" class="progress-text"></div>
+
+      <div id="deck" class="deck">
+        <!-- card injected here -->
+      </div>
+
+      <div class="actions">
+        <button id="nopeBtn" class="action nope" aria-label="Bad neighbors">✕</button>
+        <button id="likeBtn" class="action like" aria-label="Good neighbors">♥</button>
+      </div>
+      <div class="hint">Drag the card or tap the buttons</div>
+    </section>
+
+    <!-- Results -->
+    <section id="view-results" class="view hidden">
+      <header class="topbar">
+        <button id="backToSwipe" class="icon-btn" aria-label="Back">‹</button>
+        <div class="ego-line"><strong>The Affinities</strong></div>
+        <button id="refreshResults" class="end-btn">↻</button>
+      </header>
+      <div id="resultsBody" class="results-body">
+        <p class="muted">Loading…</p>
+      </div>
+    </section>
+
+    <script src="app.js"></script>
+  </body>
+</html>

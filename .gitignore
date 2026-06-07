@@ -138,11 +138,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Hugo build artifacts
-public/
-resources/
-.hugo_build.lock
-
 # SeatMate runtime
 node_modules/
 data/state.json
