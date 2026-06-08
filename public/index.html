@@ -15,10 +15,10 @@
       <div class="join-card">
         <div class="logo">🪑💚</div>
         <h1>SeatMate</h1>
-        <p class="tagline">Swipe to design the long table. Right if they'd be great neighbors, left if not.</p>
+        <p class="tagline">Swipe to design the seating chart. Right if they'd click at the table, left if not.</p>
         <input id="nameInput" type="text" placeholder="Your name" autocomplete="name" maxlength="40" />
         <button id="joinBtn" class="primary">Start swiping</button>
-        <button id="resultsLinkBtn" class="ghost">See the affinities →</button>
+        <button id="resultsLinkBtn" class="ghost">See the seating chart →</button>
       </div>
     </section>
 
@@ -26,7 +26,7 @@
     <section id="view-swipe" class="view hidden">
       <header class="topbar">
         <button id="backToJoin" class="icon-btn" aria-label="Home">‹</button>
-        <div class="ego-line">Who should sit next to<br /><strong id="egoName">—</strong>?</div>
+        <div class="ego-line">Who should sit near<br /><strong id="egoName">—</strong>?</div>
         <button id="endBtn" class="end-btn">End</button>
       </header>
 
@@ -40,8 +40,8 @@
       </div>
 
       <div class="actions">
-        <button id="nopeBtn" class="action nope" aria-label="Bad neighbors">✕</button>
-        <button id="likeBtn" class="action like" aria-label="Good neighbors">♥</button>
+        <button id="nopeBtn" class="action nope" aria-label="Bad match">✕</button>
+        <button id="likeBtn" class="action like" aria-label="Good match">♥</button>
       </div>
       <div class="hint">Drag the card or tap the buttons</div>
     </section>
@@ -50,7 +50,7 @@
     <section id="view-results" class="view hidden">
       <header class="topbar">
         <button id="backToSwipe" class="icon-btn" aria-label="Back">‹</button>
-        <div class="ego-line"><strong>The Affinities</strong></div>
+        <div class="ego-line"><strong>Seating Chart</strong></div>
         <button id="refreshResults" class="end-btn">↻</button>
       </header>
       <div id="resultsBody" class="results-body">

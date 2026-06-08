@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
-import { loadGuests, saveGuests, loadState, saveState, flush } from './lib/store.js';
+import { loadGuests, saveGuests, loadState, saveState, flush, loadConfig, saveConfig } from './lib/store.js';
 import {
   applyVote,
   getPair,
@@ -15,7 +15,7 @@ import {
   pickEgo,
   pickCandidate,
   shouldSwitchEgo,
-  bestOrdering,
+  bestMultiTableArrangement,
   rankedPairs,
 } from './lib/affinity.js';
 
@@ -26,6 +26,7 @@ app.use(express.static(join(__dirname, 'public')));
 
 let guests = loadGuests();
 const state = loadState();
+let config = loadConfig();
 
 const ACTIVE_MS = 60 * 1000; // a rater is "active" if seen in the last minute
 const now = () => Date.now();
@@ -139,23 +140,31 @@ app.post('/api/vote', (req, res) => {
 });
 
 app.get('/api/results', (_req, res) => {
-  const { order, score } = bestOrdering(state.pairs, guests);
-  const byId = new Map(guests.map((g) => [g.id, g]));
-  const seating = order.map((id, i) => {
-    const g = byId.get(id);
-    const left = i > 0 ? neighborScore(getPair(state.pairs, order[i - 1], id)) : null;
-    const right = i < order.length - 1 ? neighborScore(getPair(state.pairs, id, order[i + 1])) : null;
-    return { id, name: g?.name, neighborLeft: left, neighborRight: right };
-  });
+  const { tables, score } = bestMultiTableArrangement(
+    state.pairs, guests, config.numTables, config.seatsPerTable,
+  );
   const ranked = rankedPairs(state.pairs, guests);
   res.json({
-    seating,
+    tables,
     score,
+    config,
     progress: progress(),
     topPairs: ranked.slice(0, 8),
     avoidPairs: ranked.slice(-8).reverse(),
     raters: Object.values(state.raters).map((r) => ({ name: r.name, votes: r.votes || 0 })),
   });
+});
+
+app.get('/api/config', (_req, res) => res.json(config));
+
+app.post('/api/config', (req, res) => {
+  const { numTables, seatsPerTable } = req.body || {};
+  if (Number.isInteger(numTables) && numTables >= 1 && numTables <= 50) config.numTables = numTables;
+  if (Number.isInteger(seatsPerTable) && seatsPerTable >= 2 && seatsPerTable <= 100) {
+    config.seatsPerTable = seatsPerTable % 2 === 0 ? seatsPerTable : seatsPerTable + 1;
+  }
+  saveConfig(config);
+  res.json(config);
 });
 
 app.get('/api/guests', (_req, res) => res.json({ guests }));
@@ -187,7 +196,7 @@ app.get('/api/matrix', (_req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  🪑  SeatMate running:  http://localhost:${PORT}\n`);
   console.log(`  Loaded ${guests.length} guests. Open the URL on your iPhone (same Wi-Fi) to start swiping.\n`);
 });
