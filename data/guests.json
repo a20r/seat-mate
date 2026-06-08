@@ -1,0 +1,14 @@
+[
+  { "id": "g01", "name": "Aunt Marguerite", "side": "Bride", "relationship": "Aunt", "notes": "Talks a lot, loves a captive audience.", "funFact": "Once won a county pie contest three years running." },
+  { "id": "g02", "name": "Cousin Theo", "side": "Bride", "relationship": "Cousin", "notes": "Shy until he's had one drink.", "funFact": "Plays bass in a wedding-cover band." },
+  { "id": "g03", "name": "Dev Patel", "side": "Groom", "relationship": "College roommate", "notes": "Will talk mountain biking forever.", "funFact": "Has ridden all the trails near Lareau Farm." },
+  { "id": "g04", "name": "Priya Sharma", "side": "Groom", "relationship": "Work friend", "notes": "Vegetarian, great storyteller.", "funFact": "Speaks four languages." },
+  { "id": "g05", "name": "Grandpa Lou", "side": "Groom", "relationship": "Grandfather", "notes": "Hard of hearing on the left side.", "funFact": "Was a jazz drummer in the '60s." },
+  { "id": "g06", "name": "Hannah Brooks", "side": "Bride", "relationship": "Best friend", "notes": "Maid of honor, knows everyone.", "funFact": "Trained as a sommelier." },
+  { "id": "g07", "name": "Marcus Lee", "side": "Groom", "relationship": "Brother", "notes": "Best man, loud laugh.", "funFact": "Climbs ice in the winter." },
+  { "id": "g08", "name": "Nadia Okoye", "side": "Bride", "relationship": "Childhood friend", "notes": "Quiet, thoughtful, loves board games.", "funFact": "Runs a tiny ceramics studio." },
+  { "id": "g09", "name": "Uncle Ray", "side": "Bride", "relationship": "Uncle", "notes": "Strong political opinions — keep away from Aunt Marguerite.", "funFact": "Restores vintage motorcycles." },
+  { "id": "g10", "name": "Sofia Ramos", "side": "Groom", "relationship": "Cousin", "notes": "Dancer, will be first on the floor.", "funFact": "Choreographed a flash mob once." },
+  { "id": "g11", "name": "Ben Carter", "side": "Groom", "relationship": "Grad school friend", "notes": "Astrophysicist, surprisingly funny.", "funFact": "Has a comet named after his thesis advisor." },
+  { "id": "g12", "name": "Mei Tanaka", "side": "Bride", "relationship": "Coworker", "notes": "New to the friend group, very kind.", "funFact": "Bakes competition-level croissants." }
+]
