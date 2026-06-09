@@ -1,15 +1,15 @@
 :root {
-  --bg: #131810;
-  --bg-2: #1a2016;
+  --bg: #16111d;
+  --bg-2: #251c30;
   --ivory: #f4eddb;
-  --ink: #1a1d18;
-  --sage: #728a6b;
-  --sage-deep: #4d6949;
-  --clay: #ad6055;
-  --gold: #c69b3c;
-  --gold-light: #d9b66b;
-  --muted: #7e8a79;
-  --body-text: #dcd5c2;
+  --ink: #1c1622;
+  --sage: #58b894;       /* clean emerald — the affirmative accent */
+  --sage-deep: #34866a;
+  --clay: #d2728a;       /* dusty rose — the "nope" accent */
+  --gold: #d8aa4c;
+  --gold-light: #ecce82;
+  --muted: #9a8fac;
+  --body-text: #e4ddee;
   --serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
   --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -198,8 +198,8 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(120% 60% at 50% 0%, rgba(198,155,60,0.06) 0%, transparent 55%),
-    linear-gradient(168deg, #2b3327 0%, #222a1f 60%, #1d241a 100%);
+    radial-gradient(120% 60% at 50% 0%, rgba(216,170,76,0.08) 0%, transparent 55%),
+    linear-gradient(168deg, #322a3e 0%, #271f33 60%, #201827 100%);
   color: var(--body-text);
   border-radius: 5px;
   border: 1px solid rgba(255,255,255,0.07);
@@ -728,13 +728,13 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
   pointer-events: auto;
 }
 .ego-intro.show { opacity: 1; }
-.ego-intro.out  { opacity: 0; transition: opacity 0.42s ease; }
+.ego-intro.out  { opacity: 0; transition: opacity 1.05s ease; }
 .ego-intro-veil {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(125% 95% at 50% 36%, color-mix(in srgb, var(--ego-color) 50%, transparent) 0%, transparent 62%),
-    linear-gradient(180deg, #1b2117 0%, #0e120b 100%);
+    radial-gradient(125% 95% at 50% 36%, color-mix(in srgb, var(--ego-color) 55%, transparent) 0%, transparent 62%),
+    linear-gradient(180deg, #241b30 0%, #100b16 100%);
 }
 .ego-intro-inner {
   position: relative;
@@ -805,7 +805,7 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
 .sheet-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(8,10,6,0.6);
+  background: rgba(10,7,14,0.62);
   opacity: 0;
   transition: opacity 0.28s ease;
 }
@@ -815,7 +815,7 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
   left: 0;
   right: 0;
   bottom: 0;
-  background: #1b2117;
+  background: #221b2c;
   border-top: 2px solid var(--gold);
   border-radius: 20px 20px 0 0;
   padding: 12px 22px calc(var(--safe-bottom) + 22px);

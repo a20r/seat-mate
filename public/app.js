@@ -170,8 +170,8 @@ function playEgoIntro(ego, onCover) {
     let covered = false;
     const cover = () => { if (!covered) { covered = true; try { onCover && onCover(); } catch (_) {} } };
     setTimeout(cover, 560);                       // swap deck while fully veiled
-    setTimeout(() => ov.classList.add('out'), 1050);
-    setTimeout(() => { ov.remove(); resolve(); }, 1500);
+    setTimeout(() => ov.classList.add('out'), 1750); // hold longer before fading
+    setTimeout(() => { ov.remove(); resolve(); }, 2950);
   });
 }
 
