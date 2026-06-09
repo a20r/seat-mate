@@ -17,11 +17,12 @@ import {
   shouldSwitchEgo,
   bestMultiTableArrangement,
   rankedPairs,
+  recordSkip,
 } from './lib/affinity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '4mb' })); // roomy enough for big pasted guest CSVs
 app.use(express.static(join(__dirname, 'public')));
 
 let guests = loadGuests();
@@ -196,6 +197,17 @@ app.post('/api/vote', (req, res) => {
   res.json({ ok: true, next: nextCard(raterId) });
 });
 
+// "Not sure" — skip the pairing without recording a preference.
+app.post('/api/skip', (req, res) => {
+  const { raterId, egoId, candidateId } = req.body || {};
+  const rater = state.raters[raterId];
+  if (!rater) return res.status(400).json({ error: 'unknown rater' });
+  if (publicGuest(egoId) && publicGuest(candidateId)) recordSkip(state.pairs, egoId, candidateId);
+  rater.lastSeen = now();
+  saveState(state);
+  res.json({ ok: true, next: nextCard(raterId) });
+});
+
 app.get('/api/results', (_req, res) => {
   const { tables, score } = bestMultiTableArrangement(
     state.pairs, guests, config.numTables, config.seatsPerTable, state.constraints,
@@ -262,6 +274,109 @@ app.post('/api/config', (req, res) => {
 });
 
 app.get('/api/guests', (_req, res) => res.json({ guests }));
+
+// ---- CSV import (Zola guest-list export) ------------------------------------
+// Minimal RFC-4180-ish parser: handles quoted fields, escaped quotes, CRLF.
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQ = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else if (c !== '\r') {
+      field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+
+app.post('/api/guests/import', (req, res) => {
+  const { csv, replace = false, groupParties = true } = req.body || {};
+  if (!csv || typeof csv !== 'string') return res.status(400).json({ error: 'csv text required' });
+
+  const rows = parseCSV(csv);
+  if (rows.length < 2) return res.status(400).json({ error: 'need a header row and at least one guest' });
+
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const col = (cands) => header.findIndex((h) => cands.includes(h));
+  const iFull = col(['name', 'full name', 'guest name', 'guest']);
+  const iFirst = col(['first name', 'first', 'firstname', 'guest first name']);
+  const iLast = col(['last name', 'last', 'lastname', 'guest last name']);
+  const iParty = col(['party', 'party name', 'group', 'household', 'group name']);
+  const iRel = col(['relationship', 'guest type', 'type', 'tag', 'tags']);
+  const iSide = col(['side']);
+  const iNotes = col(['notes', 'note', 'meal', 'meal choice', 'dietary', 'rsvp']);
+
+  if (iFull < 0 && iFirst < 0) {
+    return res.status(400).json({ error: 'could not find a name column (expected "Name" or "First Name")' });
+  }
+
+  const parsed = [];
+  const partyMap = new Map();
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    const at = (idx) => (idx >= 0 ? (cells[idx] || '').trim() : '');
+    let name = iFull >= 0 ? at(iFull) : '';
+    if (!name) name = [at(iFirst), at(iLast)].filter(Boolean).join(' ').trim();
+    if (!name) continue;
+    const guest = {
+      id: randomUUID().slice(0, 8),
+      name: name.slice(0, 60),
+      side: at(iSide).slice(0, 40),
+      relationship: at(iRel).slice(0, 60),
+      notes: at(iNotes).slice(0, 280),
+      funFact: '',
+    };
+    const party = at(iParty);
+    if (party) {
+      if (!partyMap.has(party)) partyMap.set(party, []);
+      partyMap.get(party).push(guest.id);
+    }
+    parsed.push(guest);
+  }
+
+  if (parsed.length === 0) return res.status(400).json({ error: 'no named guests found in CSV' });
+
+  let added = 0;
+  if (replace) {
+    guests = parsed;
+    state.pairs = {};
+    state.constraints = { adjacent: [], groups: [] };
+    added = parsed.length;
+  } else {
+    const existing = new Set(guests.map((g) => g.name.toLowerCase()));
+    for (const g of parsed) {
+      if (existing.has(g.name.toLowerCase())) continue;
+      guests.push(g);
+      existing.add(g.name.toLowerCase());
+      added++;
+    }
+  }
+  saveGuests(guests);
+
+  // Optionally keep each Zola "party" (household) at the same table.
+  let groupsCreated = 0;
+  if (groupParties) {
+    const present = new Set(guests.map((g) => g.id));
+    for (const ids of partyMap.values()) {
+      const real = ids.filter((id) => present.has(id));
+      if (real.length >= 2) { state.constraints.groups.push(real); groupsCreated++; }
+    }
+  }
+  saveState(state);
+
+  res.json({ ok: true, added, total: guests.length, groupsCreated });
+});
 
 app.post('/api/guests', (req, res) => {
   const b = req.body || {};

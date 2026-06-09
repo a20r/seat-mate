@@ -143,6 +143,22 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
   color: #fff;
   font-family: var(--serif);
 }
+.ego-name-btn {
+  background: transparent;
+  border: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.ego-name-btn strong { display: inline; }
+.ego-name-btn .caret {
+  font-size: 13px;
+  color: var(--gold);
+  transform: translateY(-2px);
+}
+.ego-name-btn:active { opacity: 0.65; }
 .icon-btn {
   width: 36px;
   height: 36px;
@@ -334,10 +350,11 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
 .action:active { transform: scale(0.9); background: rgba(255,255,255,0.06); }
 .action.nope { color: var(--clay); }
 .action.like  { color: var(--sage); }
-.action.together {
+.action.skip {
   width: 52px;
   height: 52px;
-  font-size: 20px;
+  font-size: 22px;
+  font-family: var(--serif);
   color: var(--gold);
 }
 
@@ -950,3 +967,49 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
 .ghost-btn { background: transparent; color: var(--muted); border: 1px solid rgba(255,255,255,0.1); }
 .add-btn   { background: transparent; color: var(--gold); border: 1px solid rgba(198,155,60,0.5); }
 .done-btn  { background: var(--sage-deep); color: #fff; }
+
+/* feedback line (shared by sheets) */
+.sheet-msg { min-height: 16px; font-size: 12px; margin: 8px 2px 0; letter-spacing: 0.2px; }
+.sheet-msg.ok   { color: var(--sage); }
+.sheet-msg.warn { color: var(--clay); }
+
+/* ── Zola import sheet ────────────────────────────── */
+.import-file {
+  display: block;
+  border: 1px dashed rgba(255,255,255,0.22);
+  border-radius: 7px;
+  padding: 15px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  margin: 4px 0 10px;
+  cursor: pointer;
+}
+.import-file:active { background: rgba(255,255,255,0.03); }
+.import-file input { display: none; }
+#importText {
+  width: 100%;
+  height: 104px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 7px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-family: var(--sans);
+  color: #fff;
+  resize: vertical;
+}
+#importText:focus { outline: none; border-color: var(--gold); }
+.import-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--body-text);
+  margin-top: 11px;
+}
+.import-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--gold);
+}

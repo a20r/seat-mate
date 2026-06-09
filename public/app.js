@@ -70,6 +70,7 @@ $('joinBtn').onclick = async () => {
   startSwiping();
 };
 $('resultsLinkBtn').onclick = () => openResults();
+$('importLinkBtn').onclick = () => openImport();
 $('backToJoin').onclick = () => show('join');
 $('endBtn').onclick = () => openResults();
 $('backToSwipe').onclick = () => show('swipe');
@@ -126,7 +127,7 @@ function paintCard(data) {
     <div class="card" id="topCard">
       <div class="stamp like">SEAT</div>
       <div class="stamp nope">NOPE</div>
-      <div class="stamp up">TOGETHER</div>
+      <div class="stamp up">NOT SURE</div>
       <div class="avatar" style="background:${colorFor(c.name)}">${initials(c.name)}</div>
       <h2>${esc(c.name)}</h2>
       <div class="sub">beside <b>${esc(data.ego.name)}</b>?</div>
@@ -204,11 +205,10 @@ function attachDrag(card) {
     if (!dragging) return;
     dragging = false;
     card.style.transition = 'transform 0.3s ease';
-    // swipe up → seat-together sheet (takes priority when mostly vertical)
+    // swipe up → "not sure", skip this pairing (takes priority when mostly vertical)
     if (dy < -90 && Math.abs(dy) > Math.abs(dx) * 1.2) {
-      card.style.transform = '';
-      likeStamp.style.opacity = nopeStamp.style.opacity = upStamp.style.opacity = 0;
-      return openSheet();
+      card.style.transform = `translate(0, ${-window.innerHeight}px)`;
+      return skip();
     }
     if (dx > 110) return fling('right');
     if (dx < -110) return fling('left');
@@ -254,9 +254,33 @@ async function vote(direction) {
   }
 }
 
+// "Not sure" — advance without recording a preference.
+async function skip() {
+  if (busy || !currentCard) return;
+  busy = true;
+  const { ego, candidate } = currentCard;
+  try {
+    const res = await api('/api/skip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raterId: store.raterId, egoId: ego.id, candidateId: candidate.id }),
+    });
+    if (res.next) {
+      setTimeout(() => { renderCard(res.next); busy = false; }, 180);
+    } else {
+      busy = false;
+      loadCard();
+    }
+  } catch {
+    busy = false;
+    loadCard();
+  }
+}
+
 $('likeBtn').onclick = () => { const c = $('topCard'); if (c) { c.style.transition = 'transform 0.3s ease'; c.style.transform = `translate(${window.innerWidth}px,0) rotate(22deg)`; } vote('right'); };
 $('nopeBtn').onclick = () => { const c = $('topCard'); if (c) { c.style.transition = 'transform 0.3s ease'; c.style.transform = `translate(${-window.innerWidth}px,0) rotate(-22deg)`; } vote('left'); };
-$('togetherBtn').onclick = () => openSheet();
+$('skipBtn').onclick = () => { const c = $('topCard'); if (c) { c.style.transition = 'transform 0.3s ease'; c.style.transform = `translate(0, ${-window.innerHeight}px)`; } skip(); };
+$('egoTap').onclick = () => openSheet();
 
 // ---------- seat-together sheet ----------
 let sheetMode = 'adjacent';
@@ -361,6 +385,56 @@ async function toggleGuest(otherId) {
 $('sheetSearch').addEventListener('input', () => renderGuestList($('sheetSearch').value));
 $('sheetDone').onclick = closeSheet;
 $('seatSheet').querySelector('.sheet-scrim').onclick = closeSheet;
+
+// ---------- Zola import sheet ----------
+function openImport() {
+  $('importText').value = '';
+  $('importFile').value = '';
+  $('importFileLabel').textContent = 'Choose CSV file…';
+  $('importMsg').textContent = '';
+  $('importMsg').className = 'sheet-msg';
+  const sheet = $('importSheet');
+  sheet.classList.remove('hidden');
+  requestAnimationFrame(() => sheet.classList.add('open'));
+}
+function closeImport() {
+  const sheet = $('importSheet');
+  sheet.classList.remove('open');
+  setTimeout(() => sheet.classList.add('hidden'), 280);
+}
+
+$('importFile').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  $('importFileLabel').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = () => { $('importText').value = reader.result || ''; };
+  reader.readAsText(file);
+});
+
+$('importGo').onclick = async () => {
+  const csv = $('importText').value.trim();
+  const msg = $('importMsg');
+  if (!csv) { msg.textContent = 'Choose a file or paste some CSV first.'; msg.className = 'sheet-msg warn'; return; }
+  msg.textContent = 'Importing…'; msg.className = 'sheet-msg';
+  const res = await api('/api/guests/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      csv,
+      replace: $('importReplace').checked,
+      groupParties: $('importGroup').checked,
+    }),
+  });
+  if (res.error) { msg.textContent = res.error; msg.className = 'sheet-msg warn'; return; }
+  await refreshGuests();
+  const groups = res.groupsCreated ? ` · ${res.groupsCreated} parties kept together` : '';
+  msg.textContent = `Imported ${res.added} guest${res.added === 1 ? '' : 's'} (${res.total} total)${groups}.`;
+  msg.className = 'sheet-msg ok';
+  setTimeout(closeImport, 1400);
+};
+$('importCancel').onclick = closeImport;
+$('importSheet').querySelector('.sheet-scrim').onclick = closeImport;
 
 // ---------- results ----------
 async function openResults() {

@@ -22,6 +22,7 @@
         <input id="nameInput" type="text" placeholder="Your name" autocomplete="name" maxlength="40" />
         <button id="joinBtn" class="primary">Start swiping</button>
         <button id="resultsLinkBtn" class="ghost">See the seating chart →</button>
+        <button id="importLinkBtn" class="ghost">Import guest list from Zola</button>
       </div>
     </section>
 
@@ -29,7 +30,12 @@
     <section id="view-swipe" class="view hidden">
       <header class="topbar">
         <button id="backToJoin" class="icon-btn" aria-label="Home">‹</button>
-        <div class="ego-line">Who sits beside<br /><strong id="egoName">—</strong></div>
+        <div class="ego-line">
+          Who sits beside<br />
+          <button id="egoTap" class="ego-name-btn" aria-label="Pin who must sit with this person">
+            <strong id="egoName">—</strong><span class="caret">▾</span>
+          </button>
+        </div>
         <button id="endBtn" class="end-btn">End</button>
       </header>
 
@@ -44,10 +50,10 @@
 
       <div class="actions">
         <button id="nopeBtn" class="action nope" aria-label="Bad match">✕</button>
-        <button id="togetherBtn" class="action together" aria-label="Seat together">⌃</button>
+        <button id="skipBtn" class="action skip" aria-label="Not sure — skip">?</button>
         <button id="likeBtn" class="action like" aria-label="Good match">♥</button>
       </div>
-      <div class="hint">Swipe ← / → to rate · swipe ↑ to seat someone with <span id="hintEgo">them</span></div>
+      <div class="hint">← / → to rate · ↑ or “?” if you're not sure · tap <span id="hintEgo">the name</span> to pin pairs</div>
     </section>
 
     <!-- Seat-together sheet -->
@@ -76,6 +82,33 @@
 
         <div class="sheet-actions">
           <button id="sheetDone" class="sheet-btn done-btn">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Zola import sheet -->
+    <section id="importSheet" class="sheet hidden">
+      <div class="sheet-scrim"></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Import from <em>Zola</em></div>
+        <p class="sheet-sub">In Zola, open <b>Guest List → Export</b> to download a CSV, then choose that file or paste its contents below.</p>
+
+        <label class="import-file">
+          <input id="importFile" type="file" accept=".csv,text/csv" />
+          <span id="importFileLabel">Choose CSV file…</span>
+        </label>
+
+        <textarea id="importText" placeholder="…or paste your CSV here"></textarea>
+
+        <label class="import-check"><input id="importReplace" type="checkbox" /> Replace current guest list</label>
+        <label class="import-check"><input id="importGroup" type="checkbox" checked /> Keep each party at the same table</label>
+
+        <div id="importMsg" class="sheet-msg"></div>
+
+        <div class="sheet-actions">
+          <button id="importCancel" class="sheet-btn ghost-btn">Cancel</button>
+          <button id="importGo" class="sheet-btn done-btn">Import</button>
         </div>
       </div>
     </section>
