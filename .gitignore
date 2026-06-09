@@ -141,3 +141,7 @@ vite.config.ts.timestamp-*
 # SeatMate runtime
 node_modules/
 data/state.json
+
+# SeatMate runtime config (per-event, generated)
+data/config.json
+.claude/

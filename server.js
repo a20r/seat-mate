@@ -28,11 +28,68 @@ let guests = loadGuests();
 const state = loadState();
 let config = loadConfig();
 
+// Older saved states predate constraints — make sure the shape is always there.
+if (!state.constraints) state.constraints = { adjacent: [], groups: [] };
+state.constraints.adjacent = state.constraints.adjacent || [];
+state.constraints.groups = state.constraints.groups || [];
+
+const akey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
 const ACTIVE_MS = 60 * 1000; // a rater is "active" if seen in the last minute
 const now = () => Date.now();
 
 function publicGuest(id) {
   return guests.find((g) => g.id === id) || null;
+}
+
+// Resolve a free-typed name to a guest: exact match, then prefix, then substring.
+function resolveGuestByName(name, excludeId) {
+  if (!name) return null;
+  const q = name.toString().trim().toLowerCase();
+  if (!q) return null;
+  const pool = guests.filter((g) => g.id !== excludeId);
+  return (
+    pool.find((g) => g.name.toLowerCase() === q) ||
+    pool.find((g) => g.name.toLowerCase().startsWith(q)) ||
+    pool.find((g) => g.name.toLowerCase().includes(q)) ||
+    null
+  );
+}
+
+// Record a "must sit directly next to" rule (couples), de-duplicated.
+function addAdjacent(a, b) {
+  const arr = state.constraints.adjacent;
+  if (!arr.some(([x, y]) => akey(x, y) === akey(a, b))) arr.push([a, b]);
+}
+
+// Record a "must share a table" rule (families), merging overlapping groups.
+function addGroup(a, b) {
+  const groups = state.constraints.groups;
+  const ga = groups.find((g) => g.includes(a));
+  const gb = groups.find((g) => g.includes(b));
+  if (ga && gb && ga !== gb) {
+    for (const x of gb) if (!ga.includes(x)) ga.push(x);
+    state.constraints.groups = groups.filter((g) => g !== gb);
+  } else if (ga) {
+    if (!ga.includes(b)) ga.push(b);
+  } else if (gb) {
+    if (!gb.includes(a)) gb.push(a);
+  } else {
+    groups.push([a, b]);
+  }
+}
+
+// Name-resolved view of the current constraints, for the client.
+function constraintsView() {
+  const byId = new Map(guests.map((g) => [g.id, g]));
+  const nm = (id) => byId.get(id)?.name || '—';
+  const adjacent = state.constraints.adjacent
+    .filter(([a, b]) => byId.has(a) && byId.has(b))
+    .map(([a, b]) => ({ a, b, nameA: nm(a), nameB: nm(b) }));
+  const groups = state.constraints.groups
+    .map((g, index) => ({ index, members: g.filter((id) => byId.has(id)).map((id) => ({ id, name: nm(id) })) }))
+    .filter((g) => g.members.length > 0);
+  return { adjacent, groups };
 }
 
 // Egos / candidates currently in front of *other* active raters, so we can
@@ -141,18 +198,49 @@ app.post('/api/vote', (req, res) => {
 
 app.get('/api/results', (_req, res) => {
   const { tables, score } = bestMultiTableArrangement(
-    state.pairs, guests, config.numTables, config.seatsPerTable,
+    state.pairs, guests, config.numTables, config.seatsPerTable, state.constraints,
   );
   const ranked = rankedPairs(state.pairs, guests);
   res.json({
     tables,
     score,
     config,
+    constraints: constraintsView(),
     progress: progress(),
     topPairs: ranked.slice(0, 8),
     avoidPairs: ranked.slice(-8).reverse(),
     raters: Object.values(state.raters).map((r) => ({ name: r.name, votes: r.votes || 0 })),
   });
+});
+
+// ---- seating constraints (couples / families) -------------------------------
+app.get('/api/constraints', (_req, res) => res.json(constraintsView()));
+
+app.post('/api/constraints', (req, res) => {
+  const { type, egoId, otherId, name } = req.body || {};
+  if (!publicGuest(egoId)) return res.status(400).json({ error: 'unknown ego' });
+  const other = otherId && publicGuest(otherId) ? publicGuest(otherId) : resolveGuestByName(name, egoId);
+  if (!other) return res.status(404).json({ error: 'no guest matches', query: name });
+  if (other.id === egoId) return res.status(400).json({ error: 'cannot pair someone with themselves' });
+  if (type === 'adjacent') addAdjacent(egoId, other.id);
+  else if (type === 'group') addGroup(egoId, other.id);
+  else return res.status(400).json({ error: 'bad type' });
+  saveState(state);
+  res.json({ ok: true, matched: { id: other.id, name: other.name }, constraints: constraintsView() });
+});
+
+app.delete('/api/constraints', (req, res) => {
+  const { type, a, b, index } = req.body || {};
+  if (type === 'adjacent') {
+    state.constraints.adjacent = state.constraints.adjacent.filter(([x, y]) => akey(x, y) !== akey(a, b));
+  } else if (type === 'group') {
+    if (Number.isInteger(index)) state.constraints.groups.splice(index, 1);
+    else return res.status(400).json({ error: 'group index required' });
+  } else {
+    return res.status(400).json({ error: 'bad type' });
+  }
+  saveState(state);
+  res.json({ ok: true, constraints: constraintsView() });
 });
 
 app.get('/api/config', (_req, res) => res.json(config));
