@@ -230,12 +230,18 @@ app.post('/api/constraints', (req, res) => {
 });
 
 app.delete('/api/constraints', (req, res) => {
-  const { type, a, b, index } = req.body || {};
+  const { type, a, b, index, id } = req.body || {};
   if (type === 'adjacent') {
     state.constraints.adjacent = state.constraints.adjacent.filter(([x, y]) => akey(x, y) !== akey(a, b));
   } else if (type === 'group') {
     if (Number.isInteger(index)) state.constraints.groups.splice(index, 1);
     else return res.status(400).json({ error: 'group index required' });
+  } else if (type === 'groupMember') {
+    // Remove one guest from whatever group holds them; drop groups that fall below 2.
+    if (!id) return res.status(400).json({ error: 'id required' });
+    state.constraints.groups = state.constraints.groups
+      .map((g) => g.filter((x) => x !== id))
+      .filter((g) => g.length >= 2);
   } else {
     return res.status(400).json({ error: 'bad type' });
   }

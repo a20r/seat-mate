@@ -19,10 +19,26 @@ function show(view) {
 }
 
 // ---------- avatars ----------
+// Curated, evenly-pleasant palette — picked by hand so no avatar comes out a
+// muddy brown or olive. Names hash to a stable index.
+const AVATAR_COLORS = [
+  '#c25b78', // raspberry
+  '#5b8fc2', // cornflower
+  '#8a6fbf', // amethyst
+  '#3f9c8f', // teal
+  '#e0815f', // clay coral
+  '#cf6f6f', // coral
+  '#5aa06b', // garden green
+  '#b56baf', // orchid
+  '#5f7fb0', // steel blue
+  '#d27fa0', // rose
+  '#caa23e', // gold
+  '#6c9bd1', // sky
+];
 function colorFor(str) {
   let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
-  return `hsl(${h}, 38%, 46%)`;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 function initials(name) {
   return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
@@ -244,27 +260,24 @@ $('togetherBtn').onclick = () => openSheet();
 
 // ---------- seat-together sheet ----------
 let sheetMode = 'adjacent';
+let sheetPins = {}; // otherGuestId -> 'adjacent' | 'group' (relative to current ego)
 
-function openSheet() {
+async function openSheet() {
   if (!currentCard) return;
   const ego = currentCard.ego;
   $('sheetEgo').textContent = ego.name;
-  $('sheetMsg').textContent = '';
-  $('sheetMsg').className = 'sheet-msg';
-  $('sheetInput').value = '';
-  $('sheetChips').innerHTML = '';
+  $('sheetSearch').value = '';
   setSheetMode('adjacent');
 
-  // datalist of everyone except the current ego
-  $('guestNames').innerHTML = store.guests
-    .filter((g) => g.id !== ego.id)
-    .map((g) => `<option value="${esc(g.name)}"></option>`)
-    .join('');
+  await refreshGuests();
+  const cons = await api('/api/constraints');
+  sheetPins = computePins(cons, ego.id);
+  renderGuestList('');
 
   const sheet = $('seatSheet');
   sheet.classList.remove('hidden');
   requestAnimationFrame(() => sheet.classList.add('open'));
-  setTimeout(() => $('sheetInput').focus(), 250);
+  setTimeout(() => $('sheetSearch').focus(), 250);
 }
 
 function closeSheet() {
@@ -273,50 +286,79 @@ function closeSheet() {
   setTimeout(() => sheet.classList.add('hidden'), 280);
 }
 
+// Which guests are already pinned to this ego, and how.
+function computePins(cons, egoId) {
+  const pins = {};
+  for (const c of (cons.adjacent || [])) {
+    if (c.a === egoId) pins[c.b] = 'adjacent';
+    else if (c.b === egoId) pins[c.a] = 'adjacent';
+  }
+  for (const g of (cons.groups || [])) {
+    const ids = g.members.map((m) => m.id);
+    if (ids.includes(egoId)) for (const id of ids) if (id !== egoId && !pins[id]) pins[id] = 'group';
+  }
+  return pins;
+}
+
 function setSheetMode(mode) {
   sheetMode = mode;
   document.querySelectorAll('#sheetMode .seg-opt').forEach((b) => {
     b.classList.toggle('active', b.dataset.mode === mode);
   });
-  $('sheetInput').placeholder = mode === 'adjacent'
-    ? 'Who must sit right beside them?'
-    : 'Who must share their table?';
 }
 
 document.querySelectorAll('#sheetMode .seg-opt').forEach((b) => {
   b.onclick = () => setSheetMode(b.dataset.mode);
 });
 
-async function addFromSheet() {
-  const name = $('sheetInput').value.trim();
-  const msg = $('sheetMsg');
-  if (!name) { msg.textContent = 'Type a name first.'; msg.className = 'sheet-msg warn'; return; }
-
-  const res = await api('/api/constraints', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: sheetMode, egoId: currentCard.ego.id, name }),
+function renderGuestList(filter) {
+  const ego = currentCard.ego;
+  const q = (filter || '').trim().toLowerCase();
+  const rows = store.guests
+    .filter((g) => g.id !== ego.id)
+    .filter((g) => !q || g.name.toLowerCase().includes(q) || (g.relationship || '').toLowerCase().includes(q) || (g.side || '').toLowerCase().includes(q))
+    .map((g) => {
+      const pin = sheetPins[g.id];
+      const icon = pin === 'adjacent' ? '💍' : pin === 'group' ? '👪' : '+';
+      const sub = [g.relationship, g.side].filter(Boolean).join(' · ');
+      return `
+        <button class="guest-row${pin ? ' pinned' : ''}" data-id="${g.id}">
+          <span class="g-avatar" style="background:${colorFor(g.name)}">${initials(g.name)}</span>
+          <span class="g-info">
+            <span class="g-name">${esc(g.name)}</span>
+            <span class="g-rel">${esc(sub)}</span>
+          </span>
+          <span class="g-state">${icon}</span>
+        </button>`;
+    }).join('');
+  $('guestList').innerHTML = rows || '<div class="guest-empty">No one matches.</div>';
+  document.querySelectorAll('#guestList .guest-row').forEach((r) => {
+    r.onclick = () => toggleGuest(r.dataset.id);
   });
-  if (res.error) {
-    msg.textContent = res.error === 'no guest matches' ? `No guest named “${name}”.` : res.error;
-    msg.className = 'sheet-msg warn';
-    return;
-  }
-  const verb = sheetMode === 'adjacent' ? 'beside' : 'with';
-  const icon = sheetMode === 'adjacent' ? '💍' : '👪';
-  const chip = document.createElement('span');
-  chip.className = 'added-chip';
-  chip.innerHTML = `${icon} ${esc(res.matched.name)} <small>${verb}</small>`;
-  $('sheetChips').appendChild(chip);
-  msg.textContent = `Pinned ${res.matched.name} ${verb} ${currentCard.ego.name}.`;
-  msg.className = 'sheet-msg ok';
-  $('sheetInput').value = '';
-  $('sheetInput').focus();
 }
 
-$('sheetAdd').onclick = addFromSheet;
-$('sheetInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFromSheet(); } });
-$('sheetCancel').onclick = closeSheet;
+async function toggleGuest(otherId) {
+  const ego = currentCard.ego;
+  const existing = sheetPins[otherId];
+  if (existing) {
+    const payload = existing === 'adjacent'
+      ? { type: 'adjacent', a: ego.id, b: otherId }
+      : { type: 'groupMember', id: otherId };
+    await api('/api/constraints', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    delete sheetPins[otherId];
+  } else {
+    const res = await api('/api/constraints', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: sheetMode, egoId: ego.id, otherId }),
+    });
+    if (!res.error) sheetPins[otherId] = sheetMode;
+  }
+  renderGuestList($('sheetSearch').value);
+}
+
+$('sheetSearch').addEventListener('input', () => renderGuestList($('sheetSearch').value));
 $('sheetDone').onclick = closeSheet;
 $('seatSheet').querySelector('.sheet-scrim').onclick = closeSheet;
 

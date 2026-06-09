@@ -56,7 +56,7 @@
       <div class="sheet-card">
         <div class="sheet-handle"></div>
         <div class="sheet-title">Seat with <em id="sheetEgo">—</em></div>
-        <p class="sheet-sub">Pin someone who must be seated with them. Affinity votes fill the rest.</p>
+        <p class="sheet-sub">Search any guest and tap to pin them to this person.</p>
 
         <div class="seg" id="sheetMode">
           <button class="seg-opt active" data-mode="adjacent">
@@ -71,15 +71,10 @@
           </button>
         </div>
 
-        <input id="sheetInput" type="text" placeholder="Type a guest's name…" autocomplete="off" list="guestNames" />
-        <datalist id="guestNames"></datalist>
-        <div id="sheetMsg" class="sheet-msg"></div>
-
-        <div id="sheetChips" class="sheet-chips"></div>
+        <input id="sheetSearch" type="text" placeholder="Search guests…" autocomplete="off" />
+        <div id="guestList" class="guest-list"></div>
 
         <div class="sheet-actions">
-          <button id="sheetCancel" class="sheet-btn ghost-btn">Cancel</button>
-          <button id="sheetAdd" class="sheet-btn add-btn">Add</button>
           <button id="sheetDone" class="sheet-btn done-btn">Done</button>
         </div>
       </div>
