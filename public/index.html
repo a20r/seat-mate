@@ -101,6 +101,22 @@
       </div>
     </section>
 
+    <!-- Seat-placement picker -->
+    <section id="placeSheet" class="sheet hidden">
+      <div class="sheet-scrim"></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Place at <em id="placeSeatLabel">—</em></div>
+        <p class="sheet-sub">Pin a guest to this exact seat. Everyone else is arranged around your picks.</p>
+        <input id="placeSearch" type="text" placeholder="Search guests…" autocomplete="off" />
+        <div id="placeList" class="guest-list"></div>
+        <div class="sheet-actions">
+          <button id="placeClear" class="sheet-btn ghost-btn">Clear seat</button>
+          <button id="placeCancel" class="sheet-btn done-btn">Done</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Zola import sheet -->
     <section id="importSheet" class="sheet hidden">
       <div class="sheet-scrim"></div>

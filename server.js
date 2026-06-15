@@ -33,6 +33,7 @@ let config = loadConfig();
 if (!state.constraints) state.constraints = { adjacent: [], groups: [] };
 state.constraints.adjacent = state.constraints.adjacent || [];
 state.constraints.groups = state.constraints.groups || [];
+if (!state.placements) state.placements = {};
 
 const akey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
@@ -78,6 +79,18 @@ function addGroup(a, b) {
   } else {
     groups.push([a, b]);
   }
+}
+
+// Name-resolved view of manual seat placements, for the client.
+function placementsView() {
+  const byId = new Map(guests.map((g) => [g.id, g]));
+  const out = [];
+  for (const [seatKey, gid] of Object.entries(state.placements)) {
+    if (!byId.has(gid)) continue;
+    const [t, side, pos] = seatKey.split(':');
+    out.push({ seatKey, table: Number(t), side, pos: Number(pos), id: gid, name: byId.get(gid).name });
+  }
+  return out;
 }
 
 // Name-resolved view of the current constraints, for the client.
@@ -240,7 +253,7 @@ app.post('/api/skip', (req, res) => {
 
 app.get('/api/results', (_req, res) => {
   const { tables, score } = bestMultiTableArrangement(
-    state.pairs, guests, config.numTables, config.seatsPerTable, state.constraints,
+    state.pairs, guests, config.numTables, config.seatsPerTable, state.constraints, state.placements,
   );
   const ranked = rankedPairs(state.pairs, guests);
   res.json({
@@ -248,6 +261,7 @@ app.get('/api/results', (_req, res) => {
     score,
     config,
     constraints: constraintsView(),
+    placements: placementsView(),
     progress: progress(),
     topPairs: ranked.slice(0, 8),
     avoidPairs: ranked.slice(-8).reverse(),
@@ -301,6 +315,47 @@ app.post('/api/config', (req, res) => {
   }
   saveConfig(config);
   res.json(config);
+});
+
+// ---- manual seat placements (organizer override) ---------------------------
+app.get('/api/placements', (_req, res) => res.json({ placements: placementsView() }));
+
+app.post('/api/placements', (req, res) => {
+  const { table, side, pos, guestId } = req.body || {};
+  const k = (config.seatsPerTable % 2 === 0 ? config.seatsPerTable : config.seatsPerTable + 1) / 2;
+  if (!Number.isInteger(table) || table < 0 || table >= config.numTables) return res.status(400).json({ error: 'bad table' });
+  if (side !== 'A' && side !== 'B') return res.status(400).json({ error: 'bad side' });
+  if (!Number.isInteger(pos) || pos < 0 || pos >= k) return res.status(400).json({ error: 'bad seat' });
+
+  const seatKey = `${table}:${side}:${pos}`;
+  if (!guestId) {
+    // empty guest = clear the seat
+    delete state.placements[seatKey];
+  } else {
+    if (!publicGuest(guestId)) return res.status(400).json({ error: 'unknown guest' });
+    // a guest can occupy only one seat — drop any previous placement of theirs
+    for (const [key, gid] of Object.entries(state.placements)) {
+      if (gid === guestId) delete state.placements[key];
+    }
+    state.placements[seatKey] = guestId;
+  }
+  saveState(state);
+  res.json({ ok: true, placements: placementsView() });
+});
+
+app.delete('/api/placements', (req, res) => {
+  const { seatKey, guestId } = req.body || {};
+  if (seatKey) {
+    delete state.placements[seatKey];
+  } else if (guestId) {
+    for (const [key, gid] of Object.entries(state.placements)) {
+      if (gid === guestId) delete state.placements[key];
+    }
+  } else {
+    return res.status(400).json({ error: 'seatKey or guestId required' });
+  }
+  saveState(state);
+  res.json({ ok: true, placements: placementsView() });
 });
 
 app.get('/api/guests', (_req, res) => res.json({ guests }));

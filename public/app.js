@@ -558,32 +558,41 @@ function attachConfigHandlers(cfg) {
   $('configSaveBtn').onclick = () => saveConfig(localCfg);
 }
 
-// One table rendered as Side A · across bar · Side B.
-function renderTableSection(tableData, tableNum, totalTables, pinned) {
-  const { sideA, sideB, score } = tableData;
+// One table rendered as Side A · across bar · Side B. Every seat is tappable to
+// manually place (pin) a guest there; locked seats show a 🔒.
+function renderTableSection(tableData, tIdx, totalTables, pinned) {
+  const { sideA, sideB, score, lockedA = [], lockedB = [] } = tableData;
   const k = Math.max(sideA.length, sideB.length);
   if (k === 0) return '';
   const a = [...sideA]; const b = [...sideB];
   while (a.length < k) a.push(null);
   while (b.length < k) b.push(null);
 
-  const seatHTML = (g) => {
-    if (!g) return `<div class="seat empty-seat"><div class="bubble empty-bubble">·</div><div class="seat-name muted">—</div></div>`;
-    const pin = pinned.has(g.id) ? '<span class="pin-dot" title="Pinned by a rule">•</span>' : '';
-    return `<div class="seat">
-      <div class="bubble" style="background:${colorFor(g.name)}">${initials(g.name)}${pin}</div>
+  const seatHTML = (g, side, pos, locked) => {
+    const attrs = `data-t="${tIdx}" data-side="${side}" data-pos="${pos}"`;
+    if (!g) {
+      return `<button class="seat seat-btn empty-seat" ${attrs}>
+        <div class="bubble empty-bubble">+</div>
+        <div class="seat-name muted">empty</div>
+      </button>`;
+    }
+    const badge = locked
+      ? '<span class="lock-badge" title="Pinned to this seat">🔒</span>'
+      : (pinned.has(g.id) ? '<span class="pin-dot" title="Pinned by a rule">•</span>' : '');
+    return `<button class="seat seat-btn${locked ? ' locked' : ''}" ${attrs}>
+      <div class="bubble" style="background:${colorFor(g.name)}">${initials(g.name)}${badge}</div>
       <div class="seat-name">${esc(g.name)}</div>
-    </div>`;
+    </button>`;
   };
 
   let sideAHtml = '';
-  for (let i = 0; i < k; i++) { sideAHtml += seatHTML(a[i]); if (i < k - 1) sideAHtml += `<div class="adj-link${a[i] && a[i + 1] ? '' : ' empty-link'}"></div>`; }
+  for (let i = 0; i < k; i++) { sideAHtml += seatHTML(a[i], 'A', i, lockedA[i]); if (i < k - 1) sideAHtml += `<div class="adj-link${a[i] && a[i + 1] ? '' : ' empty-link'}"></div>`; }
   let acrossHtml = '';
   for (let i = 0; i < k; i++) { acrossHtml += `<div class="across-seg${a[i] && b[i] ? '' : ' empty-across'}"></div>`; if (i < k - 1) acrossHtml += `<div class="across-spacer"></div>`; }
   let sideBHtml = '';
-  for (let i = 0; i < k; i++) { sideBHtml += seatHTML(b[i]); if (i < k - 1) sideBHtml += `<div class="adj-link${b[i] && b[i + 1] ? '' : ' empty-link'}"></div>`; }
+  for (let i = 0; i < k; i++) { sideBHtml += seatHTML(b[i], 'B', i, lockedB[i]); if (i < k - 1) sideBHtml += `<div class="adj-link${b[i] && b[i + 1] ? '' : ' empty-link'}"></div>`; }
 
-  const label = totalTables > 1 ? `Table ${romanOrNum(tableNum)}` : 'The Table';
+  const label = totalTables > 1 ? `Table ${romanOrNum(tIdx + 1)}` : 'The Table';
   return `
     <div class="table-section">
       <div class="table-header">
@@ -630,19 +639,29 @@ function renderConstraints(cons) {
     <div class="rules">${adjRows}${grpRows}</div>`;
 }
 
+function renderPlacements(placements) {
+  const list = placements || [];
+  if (list.length === 0) return '';
+  const rows = list
+    .slice()
+    .sort((x, y) => x.table - y.table || (x.side < y.side ? -1 : 1) || x.pos - y.pos)
+    .map((p) => `
+      <div class="rule-row">
+        <span class="rule-icon">🔒</span>
+        <span class="rule-text">${esc(p.name)} <em>at</em> Table ${romanOrNum(p.table + 1)} · ${p.side}${p.pos + 1}</span>
+        <button class="rule-x" data-seatkey="${p.seatKey}">×</button>
+      </div>`).join('');
+  return `
+    <div class="section-title">Reserved seats</div>
+    <div class="rules">${rows}</div>`;
+}
+
+let lastResults = null;
 function renderResults(r) {
+  lastResults = r;
   const body = $('resultsBody');
   const cons = r.constraints || { adjacent: [], groups: [] };
-
-  if (!r.progress || r.progress.totalVotes === 0) {
-    body.innerHTML = `
-      ${renderConfigPanel(r.config || { numTables: 2, seatsPerTable: 6 })}
-      ${renderConstraints(cons)}
-      <div class="empty">No votes yet.<br />Swipe a few pairings and the seating chart will bloom here.</div>`;
-    attachConfigHandlers(r.config || { numTables: 2, seatsPerTable: 6 });
-    attachRuleHandlers();
-    return;
-  }
+  const noVotes = !r.progress || r.progress.totalVotes === 0;
 
   // ids that are pinned by any rule, to flag them on the chart
   const pinned = new Set();
@@ -663,7 +682,21 @@ function renderResults(r) {
     .map((x) => `<span class="rater-pill"><b>${esc(x.name)}</b> ${x.votes}</span>`).join('') || '<span class="muted">—</span>';
 
   const tables = r.tables || [];
-  const tablesHtml = tables.map((t, i) => renderTableSection(t, i + 1, tables.length, pinned)).join('');
+  const tablesHtml = tables.map((t, i) => renderTableSection(t, i, tables.length, pinned)).join('');
+
+  const chartNote = noVotes
+    ? 'No swipe votes yet — affinities are neutral. You can still pin seats manually; the rest fills in once people swipe.'
+    : 'Tap any seat to pin a guest there. 🔒 = manually placed.';
+
+  const analysis = noVotes ? '' : `
+    <div class="section-title">Power pairs</div>
+    ${r.topPairs.map(pairRow).join('') || '<p class="muted">—</p>'}
+
+    <div class="section-title">Keep apart</div>
+    ${r.avoidPairs.filter((p) => p.score < 0.5).map(pairRow).join('') || '<p class="muted">Nothing flagged yet.</p>'}
+
+    <div class="section-title">Raters</div>
+    <div class="raters-wrap">${raters}</div>`;
 
   body.innerHTML = `
     ${renderConfigPanel(r.config)}
@@ -675,27 +708,30 @@ function renderResults(r) {
     </div>
 
     ${renderConstraints(cons)}
+    ${renderPlacements(r.placements)}
 
     <div class="section-title">Seating chart</div>
+    <p class="muted" style="font-size:12px;margin:0 4px 10px">${chartNote}</p>
     ${tablesHtml}
 
-    <div class="section-title">Power pairs</div>
-    ${r.topPairs.map(pairRow).join('') || '<p class="muted">—</p>'}
-
-    <div class="section-title">Keep apart</div>
-    ${r.avoidPairs.filter((p) => p.score < 0.5).map(pairRow).join('') || '<p class="muted">Nothing flagged yet.</p>'}
-
-    <div class="section-title">Raters</div>
-    <div class="raters-wrap">${raters}</div>
+    ${analysis}
   `;
 
   attachConfigHandlers(r.config);
   attachRuleHandlers();
+  attachSeatHandlers();
 }
 
 function attachRuleHandlers() {
   document.querySelectorAll('.rule-x').forEach((btn) => {
     btn.onclick = async () => {
+      if (btn.dataset.seatkey) {
+        await api('/api/placements', {
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seatKey: btn.dataset.seatkey }),
+        });
+        return openResults();
+      }
       const type = btn.dataset.type;
       const payload = type === 'group'
         ? { type, index: parseInt(btn.dataset.index, 10) }
@@ -709,6 +745,74 @@ function attachRuleHandlers() {
     };
   });
 }
+
+function attachSeatHandlers() {
+  document.querySelectorAll('.seat-btn').forEach((btn) => {
+    btn.onclick = () => openPlaceSheet(Number(btn.dataset.t), btn.dataset.side, Number(btn.dataset.pos));
+  });
+}
+
+// ---------- seat-placement picker ----------
+let placeTarget = null; // { t, side, pos }
+function openPlaceSheet(t, side, pos) {
+  placeTarget = { t, side, pos };
+  $('placeSeatLabel').textContent = `Table ${romanOrNum(t + 1)} · ${side}${pos + 1}`;
+  $('placeSearch').value = '';
+  renderPlaceList('');
+  const sheet = $('placeSheet');
+  sheet.classList.remove('hidden');
+  requestAnimationFrame(() => sheet.classList.add('open'));
+  setTimeout(() => $('placeSearch').focus(), 250);
+}
+function closePlaceSheet() {
+  const sheet = $('placeSheet');
+  sheet.classList.remove('open');
+  setTimeout(() => sheet.classList.add('hidden'), 280);
+}
+function renderPlaceList(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const placedBy = {};
+  ((lastResults && lastResults.placements) || []).forEach((p) => { placedBy[p.id] = `T${p.table + 1} ${p.side}${p.pos + 1}`; });
+  const rows = store.guests
+    .filter((g) => !q || g.name.toLowerCase().includes(q) || (g.relationship || '').toLowerCase().includes(q) || (g.side || '').toLowerCase().includes(q))
+    .map((g) => {
+      const where = placedBy[g.id];
+      const sub = [g.relationship, g.side].filter(Boolean).join(' · ');
+      return `
+        <button class="guest-row${where ? ' pinned' : ''}" data-id="${g.id}">
+          <span class="g-avatar" style="background:${colorFor(g.name)}">${initials(g.name)}</span>
+          <span class="g-info">
+            <span class="g-name">${esc(g.name)}</span>
+            <span class="g-rel">${esc(sub)}</span>
+          </span>
+          <span class="g-state">${where ? '🔒 ' + where : '→'}</span>
+        </button>`;
+    }).join('');
+  $('placeList').innerHTML = rows || '<div class="guest-empty">No one matches.</div>';
+  document.querySelectorAll('#placeList .guest-row').forEach((r) => {
+    r.onclick = () => choosePlace(r.dataset.id);
+  });
+}
+async function choosePlace(guestId) {
+  await api('/api/placements', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ table: placeTarget.t, side: placeTarget.side, pos: placeTarget.pos, guestId }),
+  });
+  closePlaceSheet();
+  openResults();
+}
+async function clearSeatPlacement() {
+  await api('/api/placements', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ table: placeTarget.t, side: placeTarget.side, pos: placeTarget.pos, guestId: null }),
+  });
+  closePlaceSheet();
+  openResults();
+}
+$('placeSearch').addEventListener('input', () => renderPlaceList($('placeSearch').value));
+$('placeClear').onclick = clearSeatPlacement;
+$('placeCancel').onclick = closePlaceSheet;
+$('placeSheet').querySelector('.sheet-scrim').onclick = closePlaceSheet;
 
 async function saveConfig(cfg) {
   $('resultsBody').innerHTML = '<p class="muted">Recalculating…</p>';

@@ -557,6 +557,24 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
   flex-direction: column;
   align-items: center;
 }
+/* tappable seat (manual placement) */
+.seat-btn {
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.seat-btn:active { background: rgba(255,255,255,0.05); }
+.seat.locked .bubble { box-shadow: 0 0 0 2px var(--gold); }
+.lock-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 11px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6));
+}
 .seat .bubble {
   position: relative;
   width: 50px;
