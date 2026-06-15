@@ -513,11 +513,30 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
 .table-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   padding-bottom: 12px;
   margin-bottom: 10px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.table-act {
+  background: transparent;
+  border: 1px solid rgba(198,155,60,0.5);
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  border-radius: 3px;
+}
+.table-act:active { background: rgba(198,155,60,0.12); }
+.table-act.danger { border-color: rgba(210,114,138,0.5); color: var(--clay); }
+.table-act.danger:active { background: rgba(210,114,138,0.12); }
 .table-label {
   font-family: var(--serif);
   font-style: italic;

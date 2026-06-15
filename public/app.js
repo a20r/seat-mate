@@ -560,7 +560,7 @@ function attachConfigHandlers(cfg) {
 
 // One table rendered as Side A · across bar · Side B. Every seat is tappable to
 // manually place (pin) a guest there; locked seats show a 🔒.
-function renderTableSection(tableData, tIdx, totalTables, pinned) {
+function renderTableSection(tableData, tIdx, totalTables, pinned, placedTables) {
   const { sideA, sideB, score, lockedA = [], lockedB = [] } = tableData;
   const k = Math.max(sideA.length, sideB.length);
   if (k === 0) return '';
@@ -593,11 +593,16 @@ function renderTableSection(tableData, tIdx, totalTables, pinned) {
   for (let i = 0; i < k; i++) { sideBHtml += seatHTML(b[i], 'B', i, lockedB[i]); if (i < k - 1) sideBHtml += `<div class="adj-link${b[i] && b[i + 1] ? '' : ' empty-link'}"></div>`; }
 
   const label = totalTables > 1 ? `Table ${romanOrNum(tIdx + 1)}` : 'The Table';
+  const hasPlaced = placedTables && placedTables.has(tIdx);
   return `
     <div class="table-section">
       <div class="table-header">
         <span class="table-label">${label}</span>
-        <span class="table-score">${(score || 0).toFixed(1)} affinity</span>
+        <span class="table-actions">
+          <button class="table-act" data-act="autofill" data-t="${tIdx}">Auto-fill</button>
+          ${hasPlaced ? `<button class="table-act danger" data-act="cleartable" data-t="${tIdx}">Clear</button>` : ''}
+          <span class="table-score">${(score || 0).toFixed(1)} pts</span>
+        </span>
       </div>
       <div class="table-body">
         <div class="side-label">Side A</div>
@@ -681,8 +686,9 @@ function renderResults(r) {
   const raters = (r.raters || []).filter((x) => x.votes > 0).sort((a, b) => b.votes - a.votes)
     .map((x) => `<span class="rater-pill"><b>${esc(x.name)}</b> ${x.votes}</span>`).join('') || '<span class="muted">—</span>';
 
+  const placedTables = new Set((r.placements || []).map((p) => p.table));
   const tables = r.tables || [];
-  const tablesHtml = tables.map((t, i) => renderTableSection(t, i, tables.length, pinned)).join('');
+  const tablesHtml = tables.map((t, i) => renderTableSection(t, i, tables.length, pinned, placedTables)).join('');
 
   const chartNote = noVotes
     ? 'No swipe votes yet — affinities are neutral. You can still pin seats manually; the rest fills in once people swipe.'
@@ -749,6 +755,21 @@ function attachRuleHandlers() {
 function attachSeatHandlers() {
   document.querySelectorAll('.seat-btn').forEach((btn) => {
     btn.onclick = () => openPlaceSheet(Number(btn.dataset.t), btn.dataset.side, Number(btn.dataset.pos));
+  });
+  document.querySelectorAll('.table-act').forEach((btn) => {
+    btn.onclick = async () => {
+      const t = Number(btn.dataset.t);
+      if (btn.dataset.act === 'autofill') {
+        await api('/api/placements/autofill', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ table: t }),
+        });
+      } else {
+        await api('/api/placements', {
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ table: t }),
+        });
+      }
+      openResults();
+    };
   });
 }
 

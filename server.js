@@ -344,15 +344,47 @@ app.post('/api/placements', (req, res) => {
 });
 
 app.delete('/api/placements', (req, res) => {
-  const { seatKey, guestId } = req.body || {};
+  const { seatKey, guestId, table } = req.body || {};
   if (seatKey) {
     delete state.placements[seatKey];
   } else if (guestId) {
     for (const [key, gid] of Object.entries(state.placements)) {
       if (gid === guestId) delete state.placements[key];
     }
+  } else if (Number.isInteger(table)) {
+    const prefix = `${table}:`;
+    for (const key of Object.keys(state.placements)) if (key.startsWith(prefix)) delete state.placements[key];
   } else {
-    return res.status(400).json({ error: 'seatKey or guestId required' });
+    return res.status(400).json({ error: 'seatKey, guestId, or table required' });
+  }
+  saveState(state);
+  res.json({ ok: true, placements: placementsView() });
+});
+
+// Auto-fill a table: lock in the solver's current best picks for its open seats.
+// Because the solver already arranges high-affinity guests around any pinned
+// anchors, this just freezes that arrangement for the chosen table.
+app.post('/api/placements/autofill', (req, res) => {
+  const { table } = req.body || {};
+  if (!Number.isInteger(table) || table < 0 || table >= config.numTables) {
+    return res.status(400).json({ error: 'bad table' });
+  }
+  const result = bestMultiTableArrangement(
+    state.pairs, guests, config.numTables, config.seatsPerTable, state.constraints, state.placements,
+  );
+  const td = result.tables[table];
+  if (td) {
+    const lockSide = (sideArr, lockedArr, side) => {
+      for (let pos = 0; pos < sideArr.length; pos++) {
+        if (lockedArr[pos]) continue; // already a manual placement
+        const g = sideArr[pos];
+        if (!g) continue;
+        for (const [key, gid] of Object.entries(state.placements)) if (gid === g.id) delete state.placements[key];
+        state.placements[`${table}:${side}:${pos}`] = g.id;
+      }
+    };
+    lockSide(td.sideA, td.lockedA, 'A');
+    lockSide(td.sideB, td.lockedB, 'B');
   }
   saveState(state);
   res.json({ ok: true, placements: placementsView() });
