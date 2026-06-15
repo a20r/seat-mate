@@ -139,13 +139,19 @@ function nextCard(raterId) {
 
   const { egos, candidatesByEgo } = activeAssignments(raterId);
 
-  if (!rater.egoId || shouldSwitchEgo(state.pairs, guests, rater.egoId, rater.cardsThisSession || 0)) {
+  // Re-pick the ego if it's unset, no longer exists (guests were deleted /
+  // re-imported), or this rater has learned enough about it for now.
+  if (
+    !rater.egoId ||
+    !publicGuest(rater.egoId) ||
+    shouldSwitchEgo(state.pairs, guests, rater.egoId, rater.cardsThisSession || 0)
+  ) {
     rater.egoId = pickEgo(state.pairs, guests, { exclude: egos });
     rater.cardsThisSession = 0;
   }
 
   const avoid = new Set();
-  if (rater.lastCandidate) avoid.add(rater.lastCandidate);
+  if (rater.lastCandidate && publicGuest(rater.lastCandidate)) avoid.add(rater.lastCandidate);
   const others = candidatesByEgo.get(rater.egoId);
   if (others) for (const c of others) avoid.add(c);
 

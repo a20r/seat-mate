@@ -102,6 +102,9 @@ async function loadCard() {
 // Render the next card — if the person we're seating changed, play a full-screen
 // takeover first so it's never ambiguous who the card is about.
 async function renderCard(data) {
+  // Defensive: a malformed card (missing ego/candidate) should never blank the
+  // deck — re-fetch instead of throwing on a null reference.
+  if (!data || !data.ego || !data.candidate) { return loadCard(); }
   const changed = data.ego.id !== shownEgoId;
   shownEgoId = data.ego.id;
   if (changed) {
