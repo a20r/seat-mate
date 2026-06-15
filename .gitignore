@@ -145,3 +145,6 @@ data/state.json
 # SeatMate runtime config (per-event, generated)
 data/config.json
 .claude/
+
+# Runtime guest list (real PII / imported per-event)
+data/guests.json

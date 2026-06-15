@@ -15,14 +15,39 @@ npm start
 ```
 
 Then open `http://localhost:3000`. To swipe from your iPhone, open
-`http://<your-computer-ip>:3000` while on the same Wi‑Fi (or deploy the folder to
-any Node host — Render, Railway, Fly, Glitch — no database required).
+`http://<your-computer-ip>:3000` while on the same Wi‑Fi.
 
 ## Guest list
 
-Edit `data/guests.json` (id, name, side, relationship, notes, funFact) before
-you start, or add guests live via `POST /api/guests`. Card content is intentionally
-simple for now — enrich the fields later and the UI picks them up automatically.
+Three ways to populate the pool:
+
+- **Import from Zola** — on the start screen, tap *Import guest list from Zola*,
+  then choose your Zola **Guest List → Export** CSV (or paste it). Headers are
+  matched flexibly (Name or First/Last, plus Party, Relationship, Side, Notes).
+  If the CSV has a **Wedding** RSVP column, only guests **attending the wedding**
+  are imported. Each Zola **party** can be kept together as a family group.
+- Edit `data/guests.json` (id, name, side, relationship, notes, funFact).
+- `POST /api/guests` to add one live.
+
+## Seating rules (couples & families)
+
+Tap a person's name at the top of the swipe screen to pin who must sit **right
+beside** them (couples) or at the **same table** (families). These are hard
+constraints the solver always honors. Swipe **up** (or tap **?**) to skip a
+pairing you're not sure about.
+
+## Deploy (Railway)
+
+The repo ships a `railway.json` (Nixpacks build, `node server.js`, `/health`
+check). Point a Railway service at this repo and it auto-deploys on push.
+
+**Persistence:** the app stores everything in JSON files under a data directory.
+Add a **Railway volume** to the service (any mount path) — Railway sets
+`RAILWAY_VOLUME_MOUNT_PATH`, which the app uses automatically, so your guest list,
+votes, and seating rules survive every redeploy. Locally it falls back to `./data`;
+override with the `DATA_DIR` env var if you like. `PORT` is read from the
+environment (Railway sets it). Once deployed, import your guest list once and
+share the public URL.
 
 ## How it works
 
@@ -52,13 +77,20 @@ the keep-apart pairs all show up on the **End / Affinities** screen.
 
 ## API
 
-| Method | Path            | Purpose                                  |
-| ------ | --------------- | ---------------------------------------- |
-| POST   | `/api/raters`   | Register a rater, get a `raterId`        |
-| GET    | `/api/card`     | Next ego + candidate card to rate        |
-| POST   | `/api/vote`     | Submit a swipe, get the next card        |
-| GET    | `/api/results`  | Suggested seating, top/avoid pairs, stats|
-| GET    | `/api/matrix`   | Full affinity matrix                     |
-| GET/POST | `/api/guests` | List / add guests                        |
+| Method | Path                  | Purpose                                       |
+| ------ | --------------------- | --------------------------------------------- |
+| POST   | `/api/raters`         | Register a rater, get a `raterId`             |
+| GET    | `/api/card`           | Next ego + candidate card to rate             |
+| POST   | `/api/vote`           | Submit a swipe, get the next card             |
+| POST   | `/api/skip`           | "Not sure" — skip a pairing, get the next card|
+| GET    | `/api/results`        | Suggested seating, top/avoid pairs, stats     |
+| GET    | `/api/matrix`         | Full affinity matrix                          |
+| GET/POST | `/api/guests`       | List / add guests                             |
+| POST   | `/api/guests/import`  | Import a Zola CSV (wedding-attending only)    |
+| GET/POST/DELETE | `/api/constraints` | List / add / remove couple & family pins |
+| GET/POST | `/api/config`       | Tables × seats-per-table                      |
+| GET    | `/health`             | Healthcheck (Railway)                         |
 
-State persists to `data/state.json` (git-ignored). Delete it to reset all votes.
+State persists to JSON files under the data directory (`data/state.json`,
+`data/guests.json`, `data/config.json` — all git-ignored, kept on the Railway
+volume in production). Delete them to reset.

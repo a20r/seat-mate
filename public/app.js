@@ -428,10 +428,12 @@ $('importGo').onclick = async () => {
   });
   if (res.error) { msg.textContent = res.error; msg.className = 'sheet-msg warn'; return; }
   await refreshGuests();
-  const groups = res.groupsCreated ? ` · ${res.groupsCreated} parties kept together` : '';
-  msg.textContent = `Imported ${res.added} guest${res.added === 1 ? '' : 's'} (${res.total} total)${groups}.`;
+  const parts = [`Imported ${res.added} guest${res.added === 1 ? '' : 's'} (${res.total} total)`];
+  if (res.skippedNotAttending) parts.push(`${res.skippedNotAttending} not attending the wedding skipped`);
+  if (res.groupsCreated) parts.push(`${res.groupsCreated} parties kept together`);
+  msg.textContent = parts.join(' · ') + '.';
   msg.className = 'sheet-msg ok';
-  setTimeout(closeImport, 1400);
+  setTimeout(closeImport, 1800);
 };
 $('importCancel').onclick = closeImport;
 $('importSheet').querySelector('.sheet-scrim').onclick = closeImport;

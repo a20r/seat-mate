@@ -316,19 +316,31 @@ app.post('/api/guests/import', (req, res) => {
   const iRel = col(['relationship', 'guest type', 'type', 'tag', 'tags']);
   const iSide = col(['side']);
   const iNotes = col(['notes', 'note', 'meal', 'meal choice', 'dietary', 'rsvp']);
+  // Per-event RSVP column. Zola names it after the event ("Wedding"); only
+  // people who said yes to the wedding belong in the swiping pool.
+  const iWedding = header.findIndex((h) => h === 'wedding' || h.includes('wedding'));
 
   if (iFull < 0 && iFirst < 0) {
     return res.status(400).json({ error: 'could not find a name column (expected "Name" or "First Name")' });
   }
 
+  const isAttending = (v) => {
+    const s = (v || '').trim().toLowerCase();
+    if (!s) return false;
+    return /^(attend|accept|yes|coming|going|confirm)/.test(s);
+  };
+
   const parsed = [];
   const partyMap = new Map();
+  let skippedNotAttending = 0;
   for (let r = 1; r < rows.length; r++) {
     const cells = rows[r];
     const at = (idx) => (idx >= 0 ? (cells[idx] || '').trim() : '');
     let name = iFull >= 0 ? at(iFull) : '';
     if (!name) name = [at(iFirst), at(iLast)].filter(Boolean).join(' ').trim();
     if (!name) continue;
+    // Only keep guests attending the wedding (when a wedding RSVP column exists).
+    if (iWedding >= 0 && !isAttending(at(iWedding))) { skippedNotAttending++; continue; }
     const guest = {
       id: randomUUID().slice(0, 8),
       name: name.slice(0, 60),
@@ -375,7 +387,14 @@ app.post('/api/guests/import', (req, res) => {
   }
   saveState(state);
 
-  res.json({ ok: true, added, total: guests.length, groupsCreated });
+  res.json({
+    ok: true,
+    added,
+    total: guests.length,
+    groupsCreated,
+    skippedNotAttending,
+    weddingColumn: iWedding >= 0,
+  });
 });
 
 app.post('/api/guests', (req, res) => {
@@ -403,6 +422,9 @@ app.get('/api/matrix', (_req, res) => {
   );
   res.json({ guests: guests.map((g) => ({ id: g.id, name: g.name })), matrix });
 });
+
+// Healthcheck for Railway (and any uptime monitor).
+app.get('/health', (_req, res) => res.json({ ok: true, guests: guests.length }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
