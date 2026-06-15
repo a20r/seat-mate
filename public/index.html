@@ -53,7 +53,7 @@
         <button id="skipBtn" class="action skip" aria-label="Not sure — skip">?</button>
         <button id="likeBtn" class="action like" aria-label="Good match">♥</button>
       </div>
-      <div class="hint">← / → to rate · ↑ or “?” if you're not sure · tap <span id="hintEgo">the name</span> to pin pairs</div>
+      <div class="hint">← / → rate · ↑ skip · ↓ switch person · tap <span id="hintEgo">the name</span> to pin</div>
     </section>
 
     <!-- Seat-together sheet -->
@@ -82,6 +82,21 @@
 
         <div class="sheet-actions">
           <button id="sheetDone" class="sheet-btn done-btn">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Switch-person picker -->
+    <section id="egoSheet" class="sheet hidden">
+      <div class="sheet-scrim"></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Seat someone else</div>
+        <p class="sheet-sub">Pick who you want to find neighbors for next.</p>
+        <input id="egoSearch" type="text" placeholder="Search guests…" autocomplete="off" />
+        <div id="egoList" class="guest-list"></div>
+        <div class="sheet-actions">
+          <button id="egoCancel" class="sheet-btn ghost-btn">Cancel</button>
         </div>
       </div>
     </section>

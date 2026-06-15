@@ -132,23 +132,11 @@ function progress() {
 
 // Choose the next card for a rater: maybe rotate the ego, then pick the most
 // informative candidate to pair them against.
-function nextCard(raterId) {
-  if (guests.length < 2) return { needGuests: true };
+// Build a card for the rater's *current* egoId (assumed valid). Picks the most
+// informative candidate and does NOT change the ego — used after a manual switch.
+function pickCardForRater(raterId) {
   const rater = state.raters[raterId];
-  if (!rater) return { error: 'unknown rater' };
-
-  const { egos, candidatesByEgo } = activeAssignments(raterId);
-
-  // Re-pick the ego if it's unset, no longer exists (guests were deleted /
-  // re-imported), or this rater has learned enough about it for now.
-  if (
-    !rater.egoId ||
-    !publicGuest(rater.egoId) ||
-    shouldSwitchEgo(state.pairs, guests, rater.egoId, rater.cardsThisSession || 0)
-  ) {
-    rater.egoId = pickEgo(state.pairs, guests, { exclude: egos });
-    rater.cardsThisSession = 0;
-  }
+  const { candidatesByEgo } = activeAssignments(raterId);
 
   const avoid = new Set();
   if (rater.lastCandidate && publicGuest(rater.lastCandidate)) avoid.add(rater.lastCandidate);
@@ -171,6 +159,27 @@ function nextCard(raterId) {
   };
 }
 
+function nextCard(raterId) {
+  if (guests.length < 2) return { needGuests: true };
+  const rater = state.raters[raterId];
+  if (!rater) return { error: 'unknown rater' };
+
+  const { egos } = activeAssignments(raterId);
+
+  // Re-pick the ego if it's unset, no longer exists (guests were deleted /
+  // re-imported), or this rater has learned enough about it for now.
+  if (
+    !rater.egoId ||
+    !publicGuest(rater.egoId) ||
+    shouldSwitchEgo(state.pairs, guests, rater.egoId, rater.cardsThisSession || 0)
+  ) {
+    rater.egoId = pickEgo(state.pairs, guests, { exclude: egos });
+    rater.cardsThisSession = 0;
+  }
+
+  return pickCardForRater(raterId);
+}
+
 // ---- routes -----------------------------------------------------------------
 app.post('/api/raters', (req, res) => {
   const name = (req.body?.name || '').toString().trim().slice(0, 40) || 'Anonymous';
@@ -184,6 +193,21 @@ app.get('/api/card', (req, res) => {
   const raterId = req.query.raterId;
   if (!raterId || !state.raters[raterId]) return res.status(400).json({ error: 'unknown rater' });
   res.json(nextCard(raterId));
+});
+
+// Manually switch who this rater is finding neighbors for (the "ego"), and pin
+// it — pickCardForRater won't auto-switch away from a just-chosen person.
+app.post('/api/ego', (req, res) => {
+  const { raterId, egoId } = req.body || {};
+  const rater = state.raters[raterId];
+  if (!rater) return res.status(400).json({ error: 'unknown rater' });
+  if (!publicGuest(egoId)) return res.status(400).json({ error: 'unknown guest' });
+  rater.egoId = egoId;
+  rater.cardsThisSession = 0;
+  rater.lastCandidate = null;
+  rater.lastSeen = now();
+  saveState(state);
+  res.json({ ok: true, next: pickCardForRater(raterId) });
 });
 
 app.post('/api/vote', (req, res) => {

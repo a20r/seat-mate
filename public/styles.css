@@ -326,6 +326,7 @@ button { font-family: var(--sans); cursor: pointer; border: none; }
 .stamp.like { left: 20px; color: var(--sage); border-color: var(--sage); transform: rotate(-14deg); }
 .stamp.nope { right: 20px; color: var(--clay); border-color: var(--clay); transform: rotate(14deg); }
 .stamp.up   { left: 50%; transform: translateX(-50%); color: var(--gold); border-color: var(--gold); letter-spacing: 3px; }
+.stamp.down { top: auto; bottom: 26px; left: 50%; transform: translateX(-50%); color: #6c9bd1; border-color: #6c9bd1; letter-spacing: 3px; }
 
 /* ── Action buttons ───────────────────────────────── */
 .actions {

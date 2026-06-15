@@ -131,6 +131,7 @@ function paintCard(data) {
       <div class="stamp like">SEAT</div>
       <div class="stamp nope">NOPE</div>
       <div class="stamp up">NOT SURE</div>
+      <div class="stamp down">SWITCH</div>
       <div class="avatar" style="background:${colorFor(c.name)}">${initials(c.name)}</div>
       <h2>${esc(c.name)}</h2>
       <div class="sub">beside <b>${esc(data.ego.name)}</b>?</div>
@@ -185,15 +186,22 @@ function attachDrag(card) {
   const likeStamp = card.querySelector('.stamp.like');
   const nopeStamp = card.querySelector('.stamp.nope');
   const upStamp = card.querySelector('.stamp.up');
+  const downStamp = card.querySelector('.stamp.down');
 
+  const clearStamps = () => {
+    likeStamp.style.opacity = 0; nopeStamp.style.opacity = 0;
+    upStamp.style.opacity = 0; downStamp.style.opacity = 0;
+  };
   const down = (x, y) => { startX = x; startY = y; dx = 0; dy = 0; dragging = true; card.style.transition = 'none'; };
   const move = (x, y) => {
     if (!dragging) return;
     dx = x - startX; dy = y - startY;
-    const vertical = dy < 0 && Math.abs(dy) > Math.abs(dx);
+    const vertical = Math.abs(dy) > Math.abs(dx);
     if (vertical) {
       card.style.transform = `translate(0, ${dy}px) scale(${1 - Math.min(Math.abs(dy) / 1600, 0.05)})`;
-      upStamp.style.opacity = Math.min(Math.abs(dy) / 110, 1);
+      const t = Math.min(Math.abs(dy) / 110, 1);
+      upStamp.style.opacity = dy < 0 ? t : 0;     // up = not sure
+      downStamp.style.opacity = dy > 0 ? t : 0;   // down = switch person
       likeStamp.style.opacity = 0; nopeStamp.style.opacity = 0;
     } else {
       const rot = dx / 18;
@@ -201,24 +209,29 @@ function attachDrag(card) {
       const t = Math.min(Math.abs(dx) / 120, 1);
       likeStamp.style.opacity = dx > 0 ? t : 0;
       nopeStamp.style.opacity = dx < 0 ? t : 0;
-      upStamp.style.opacity = 0;
+      upStamp.style.opacity = 0; downStamp.style.opacity = 0;
     }
   };
   const up = () => {
     if (!dragging) return;
     dragging = false;
     card.style.transition = 'transform 0.3s ease';
-    // swipe up → "not sure", skip this pairing (takes priority when mostly vertical)
-    if (dy < -90 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+    const mostlyVertical = Math.abs(dy) > Math.abs(dx) * 1.2;
+    // swipe up → "not sure", skip this pairing
+    if (dy < -90 && mostlyVertical) {
       card.style.transform = `translate(0, ${-window.innerHeight}px)`;
       return skip();
+    }
+    // swipe down → switch who we're seating for (card snaps back, picker opens)
+    if (dy > 90 && mostlyVertical) {
+      card.style.transform = '';
+      clearStamps();
+      return openEgoPicker();
     }
     if (dx > 110) return fling('right');
     if (dx < -110) return fling('left');
     card.style.transform = '';
-    likeStamp.style.opacity = 0;
-    nopeStamp.style.opacity = 0;
-    upStamp.style.opacity = 0;
+    clearStamps();
   };
 
   card.addEventListener('touchstart', (e) => down(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
@@ -388,6 +401,57 @@ async function toggleGuest(otherId) {
 $('sheetSearch').addEventListener('input', () => renderGuestList($('sheetSearch').value));
 $('sheetDone').onclick = closeSheet;
 $('seatSheet').querySelector('.sheet-scrim').onclick = closeSheet;
+
+// ---------- switch-person picker (swipe down) ----------
+async function openEgoPicker() {
+  await refreshGuests();
+  $('egoSearch').value = '';
+  renderEgoList('');
+  const sheet = $('egoSheet');
+  sheet.classList.remove('hidden');
+  requestAnimationFrame(() => sheet.classList.add('open'));
+  setTimeout(() => $('egoSearch').focus(), 250);
+}
+function closeEgoPicker() {
+  const sheet = $('egoSheet');
+  sheet.classList.remove('open');
+  setTimeout(() => sheet.classList.add('hidden'), 280);
+}
+function renderEgoList(filter) {
+  const curId = currentCard ? currentCard.ego.id : null;
+  const q = (filter || '').trim().toLowerCase();
+  const rows = store.guests
+    .filter((g) => !q || g.name.toLowerCase().includes(q) || (g.relationship || '').toLowerCase().includes(q) || (g.side || '').toLowerCase().includes(q))
+    .map((g) => {
+      const sub = [g.relationship, g.side].filter(Boolean).join(' · ');
+      const isCur = g.id === curId;
+      return `
+        <button class="guest-row${isCur ? ' pinned' : ''}" data-id="${g.id}">
+          <span class="g-avatar" style="background:${colorFor(g.name)}">${initials(g.name)}</span>
+          <span class="g-info">
+            <span class="g-name">${esc(g.name)}</span>
+            <span class="g-rel">${esc(sub)}</span>
+          </span>
+          <span class="g-state">${isCur ? '•' : '→'}</span>
+        </button>`;
+    }).join('');
+  $('egoList').innerHTML = rows || '<div class="guest-empty">No one matches.</div>';
+  document.querySelectorAll('#egoList .guest-row').forEach((r) => {
+    r.onclick = () => chooseEgo(r.dataset.id);
+  });
+}
+async function chooseEgo(egoId) {
+  const res = await api('/api/ego', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raterId: store.raterId, egoId }),
+  });
+  closeEgoPicker();
+  if (res && res.next) renderCard(res.next); // plays the "Now seating" intro for the chosen person
+}
+$('egoSearch').addEventListener('input', () => renderEgoList($('egoSearch').value));
+$('egoCancel').onclick = closeEgoPicker;
+$('egoSheet').querySelector('.sheet-scrim').onclick = closeEgoPicker;
 
 // ---------- Zola import sheet ----------
 function openImport() {
