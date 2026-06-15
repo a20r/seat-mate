@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
-import { loadGuests, saveGuests, loadState, saveState, flush } from './lib/store.js';
+import { loadGuests, saveGuests, loadState, saveState, flush, loadConfig, saveConfig } from './lib/store.js';
 import {
   applyVote,
   getPair,
@@ -15,23 +15,95 @@ import {
   pickEgo,
   pickCandidate,
   shouldSwitchEgo,
-  bestOrdering,
+  bestMultiTableArrangement,
   rankedPairs,
+  recordSkip,
 } from './lib/affinity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '4mb' })); // roomy enough for big pasted guest CSVs
 app.use(express.static(join(__dirname, 'public')));
 
 let guests = loadGuests();
 const state = loadState();
+let config = loadConfig();
+
+// Older saved states predate constraints — make sure the shape is always there.
+if (!state.constraints) state.constraints = { adjacent: [], groups: [] };
+state.constraints.adjacent = state.constraints.adjacent || [];
+state.constraints.groups = state.constraints.groups || [];
+if (!state.placements) state.placements = {};
+
+const akey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 const ACTIVE_MS = 60 * 1000; // a rater is "active" if seen in the last minute
 const now = () => Date.now();
 
 function publicGuest(id) {
   return guests.find((g) => g.id === id) || null;
+}
+
+// Resolve a free-typed name to a guest: exact match, then prefix, then substring.
+function resolveGuestByName(name, excludeId) {
+  if (!name) return null;
+  const q = name.toString().trim().toLowerCase();
+  if (!q) return null;
+  const pool = guests.filter((g) => g.id !== excludeId);
+  return (
+    pool.find((g) => g.name.toLowerCase() === q) ||
+    pool.find((g) => g.name.toLowerCase().startsWith(q)) ||
+    pool.find((g) => g.name.toLowerCase().includes(q)) ||
+    null
+  );
+}
+
+// Record a "must sit directly next to" rule (couples), de-duplicated.
+function addAdjacent(a, b) {
+  const arr = state.constraints.adjacent;
+  if (!arr.some(([x, y]) => akey(x, y) === akey(a, b))) arr.push([a, b]);
+}
+
+// Record a "must share a table" rule (families), merging overlapping groups.
+function addGroup(a, b) {
+  const groups = state.constraints.groups;
+  const ga = groups.find((g) => g.includes(a));
+  const gb = groups.find((g) => g.includes(b));
+  if (ga && gb && ga !== gb) {
+    for (const x of gb) if (!ga.includes(x)) ga.push(x);
+    state.constraints.groups = groups.filter((g) => g !== gb);
+  } else if (ga) {
+    if (!ga.includes(b)) ga.push(b);
+  } else if (gb) {
+    if (!gb.includes(a)) gb.push(a);
+  } else {
+    groups.push([a, b]);
+  }
+}
+
+// Name-resolved view of manual seat placements, for the client.
+function placementsView() {
+  const byId = new Map(guests.map((g) => [g.id, g]));
+  const out = [];
+  for (const [seatKey, gid] of Object.entries(state.placements)) {
+    if (!byId.has(gid)) continue;
+    const [t, side, pos] = seatKey.split(':');
+    out.push({ seatKey, table: Number(t), side, pos: Number(pos), id: gid, name: byId.get(gid).name });
+  }
+  return out;
+}
+
+// Name-resolved view of the current constraints, for the client.
+function constraintsView() {
+  const byId = new Map(guests.map((g) => [g.id, g]));
+  const nm = (id) => byId.get(id)?.name || '—';
+  const adjacent = state.constraints.adjacent
+    .filter(([a, b]) => byId.has(a) && byId.has(b))
+    .map(([a, b]) => ({ a, b, nameA: nm(a), nameB: nm(b) }));
+  const groups = state.constraints.groups
+    .map((g, index) => ({ index, members: g.filter((id) => byId.has(id)).map((id) => ({ id, name: nm(id) })) }))
+    .filter((g) => g.members.length > 0);
+  return { adjacent, groups };
 }
 
 // Egos / candidates currently in front of *other* active raters, so we can
@@ -73,20 +145,14 @@ function progress() {
 
 // Choose the next card for a rater: maybe rotate the ego, then pick the most
 // informative candidate to pair them against.
-function nextCard(raterId) {
-  if (guests.length < 2) return { needGuests: true };
+// Build a card for the rater's *current* egoId (assumed valid). Picks the most
+// informative candidate and does NOT change the ego — used after a manual switch.
+function pickCardForRater(raterId) {
   const rater = state.raters[raterId];
-  if (!rater) return { error: 'unknown rater' };
-
-  const { egos, candidatesByEgo } = activeAssignments(raterId);
-
-  if (!rater.egoId || shouldSwitchEgo(state.pairs, guests, rater.egoId, rater.cardsThisSession || 0)) {
-    rater.egoId = pickEgo(state.pairs, guests, { exclude: egos });
-    rater.cardsThisSession = 0;
-  }
+  const { candidatesByEgo } = activeAssignments(raterId);
 
   const avoid = new Set();
-  if (rater.lastCandidate) avoid.add(rater.lastCandidate);
+  if (rater.lastCandidate && publicGuest(rater.lastCandidate)) avoid.add(rater.lastCandidate);
   const others = candidatesByEgo.get(rater.egoId);
   if (others) for (const c of others) avoid.add(c);
 
@@ -106,6 +172,27 @@ function nextCard(raterId) {
   };
 }
 
+function nextCard(raterId) {
+  if (guests.length < 2) return { needGuests: true };
+  const rater = state.raters[raterId];
+  if (!rater) return { error: 'unknown rater' };
+
+  const { egos } = activeAssignments(raterId);
+
+  // Re-pick the ego if it's unset, no longer exists (guests were deleted /
+  // re-imported), or this rater has learned enough about it for now.
+  if (
+    !rater.egoId ||
+    !publicGuest(rater.egoId) ||
+    shouldSwitchEgo(state.pairs, guests, rater.egoId, rater.cardsThisSession || 0)
+  ) {
+    rater.egoId = pickEgo(state.pairs, guests, { exclude: egos });
+    rater.cardsThisSession = 0;
+  }
+
+  return pickCardForRater(raterId);
+}
+
 // ---- routes -----------------------------------------------------------------
 app.post('/api/raters', (req, res) => {
   const name = (req.body?.name || '').toString().trim().slice(0, 40) || 'Anonymous';
@@ -119,6 +206,21 @@ app.get('/api/card', (req, res) => {
   const raterId = req.query.raterId;
   if (!raterId || !state.raters[raterId]) return res.status(400).json({ error: 'unknown rater' });
   res.json(nextCard(raterId));
+});
+
+// Manually switch who this rater is finding neighbors for (the "ego"), and pin
+// it — pickCardForRater won't auto-switch away from a just-chosen person.
+app.post('/api/ego', (req, res) => {
+  const { raterId, egoId } = req.body || {};
+  const rater = state.raters[raterId];
+  if (!rater) return res.status(400).json({ error: 'unknown rater' });
+  if (!publicGuest(egoId)) return res.status(400).json({ error: 'unknown guest' });
+  rater.egoId = egoId;
+  rater.cardsThisSession = 0;
+  rater.lastCandidate = null;
+  rater.lastSeen = now();
+  saveState(state);
+  res.json({ ok: true, next: pickCardForRater(raterId) });
 });
 
 app.post('/api/vote', (req, res) => {
@@ -138,19 +240,28 @@ app.post('/api/vote', (req, res) => {
   res.json({ ok: true, next: nextCard(raterId) });
 });
 
+// "Not sure" — skip the pairing without recording a preference.
+app.post('/api/skip', (req, res) => {
+  const { raterId, egoId, candidateId } = req.body || {};
+  const rater = state.raters[raterId];
+  if (!rater) return res.status(400).json({ error: 'unknown rater' });
+  if (publicGuest(egoId) && publicGuest(candidateId)) recordSkip(state.pairs, egoId, candidateId);
+  rater.lastSeen = now();
+  saveState(state);
+  res.json({ ok: true, next: nextCard(raterId) });
+});
+
 app.get('/api/results', (_req, res) => {
-  const { order, score } = bestOrdering(state.pairs, guests);
-  const byId = new Map(guests.map((g) => [g.id, g]));
-  const seating = order.map((id, i) => {
-    const g = byId.get(id);
-    const left = i > 0 ? neighborScore(getPair(state.pairs, order[i - 1], id)) : null;
-    const right = i < order.length - 1 ? neighborScore(getPair(state.pairs, id, order[i + 1])) : null;
-    return { id, name: g?.name, neighborLeft: left, neighborRight: right };
-  });
+  const { tables, score } = bestMultiTableArrangement(
+    state.pairs, guests, config.numTables, config.seatsPerTable, state.constraints, state.placements,
+  );
   const ranked = rankedPairs(state.pairs, guests);
   res.json({
-    seating,
+    tables,
     score,
+    config,
+    constraints: constraintsView(),
+    placements: placementsView(),
     progress: progress(),
     topPairs: ranked.slice(0, 8),
     avoidPairs: ranked.slice(-8).reverse(),
@@ -158,7 +269,250 @@ app.get('/api/results', (_req, res) => {
   });
 });
 
+// ---- seating constraints (couples / families) -------------------------------
+app.get('/api/constraints', (_req, res) => res.json(constraintsView()));
+
+app.post('/api/constraints', (req, res) => {
+  const { type, egoId, otherId, name } = req.body || {};
+  if (!publicGuest(egoId)) return res.status(400).json({ error: 'unknown ego' });
+  const other = otherId && publicGuest(otherId) ? publicGuest(otherId) : resolveGuestByName(name, egoId);
+  if (!other) return res.status(404).json({ error: 'no guest matches', query: name });
+  if (other.id === egoId) return res.status(400).json({ error: 'cannot pair someone with themselves' });
+  if (type === 'adjacent') addAdjacent(egoId, other.id);
+  else if (type === 'group') addGroup(egoId, other.id);
+  else return res.status(400).json({ error: 'bad type' });
+  saveState(state);
+  res.json({ ok: true, matched: { id: other.id, name: other.name }, constraints: constraintsView() });
+});
+
+app.delete('/api/constraints', (req, res) => {
+  const { type, a, b, index, id } = req.body || {};
+  if (type === 'adjacent') {
+    state.constraints.adjacent = state.constraints.adjacent.filter(([x, y]) => akey(x, y) !== akey(a, b));
+  } else if (type === 'group') {
+    if (Number.isInteger(index)) state.constraints.groups.splice(index, 1);
+    else return res.status(400).json({ error: 'group index required' });
+  } else if (type === 'groupMember') {
+    // Remove one guest from whatever group holds them; drop groups that fall below 2.
+    if (!id) return res.status(400).json({ error: 'id required' });
+    state.constraints.groups = state.constraints.groups
+      .map((g) => g.filter((x) => x !== id))
+      .filter((g) => g.length >= 2);
+  } else {
+    return res.status(400).json({ error: 'bad type' });
+  }
+  saveState(state);
+  res.json({ ok: true, constraints: constraintsView() });
+});
+
+app.get('/api/config', (_req, res) => res.json(config));
+
+app.post('/api/config', (req, res) => {
+  const { numTables, seatsPerTable } = req.body || {};
+  if (Number.isInteger(numTables) && numTables >= 1 && numTables <= 50) config.numTables = numTables;
+  if (Number.isInteger(seatsPerTable) && seatsPerTable >= 2 && seatsPerTable <= 100) {
+    config.seatsPerTable = seatsPerTable % 2 === 0 ? seatsPerTable : seatsPerTable + 1;
+  }
+  saveConfig(config);
+  res.json(config);
+});
+
+// ---- manual seat placements (organizer override) ---------------------------
+app.get('/api/placements', (_req, res) => res.json({ placements: placementsView() }));
+
+app.post('/api/placements', (req, res) => {
+  const { table, side, pos, guestId } = req.body || {};
+  const k = (config.seatsPerTable % 2 === 0 ? config.seatsPerTable : config.seatsPerTable + 1) / 2;
+  if (!Number.isInteger(table) || table < 0 || table >= config.numTables) return res.status(400).json({ error: 'bad table' });
+  if (side !== 'A' && side !== 'B') return res.status(400).json({ error: 'bad side' });
+  if (!Number.isInteger(pos) || pos < 0 || pos >= k) return res.status(400).json({ error: 'bad seat' });
+
+  const seatKey = `${table}:${side}:${pos}`;
+  if (!guestId) {
+    // empty guest = clear the seat
+    delete state.placements[seatKey];
+  } else {
+    if (!publicGuest(guestId)) return res.status(400).json({ error: 'unknown guest' });
+    // a guest can occupy only one seat — drop any previous placement of theirs
+    for (const [key, gid] of Object.entries(state.placements)) {
+      if (gid === guestId) delete state.placements[key];
+    }
+    state.placements[seatKey] = guestId;
+  }
+  saveState(state);
+  res.json({ ok: true, placements: placementsView() });
+});
+
+app.delete('/api/placements', (req, res) => {
+  const { seatKey, guestId, table } = req.body || {};
+  if (seatKey) {
+    delete state.placements[seatKey];
+  } else if (guestId) {
+    for (const [key, gid] of Object.entries(state.placements)) {
+      if (gid === guestId) delete state.placements[key];
+    }
+  } else if (Number.isInteger(table)) {
+    const prefix = `${table}:`;
+    for (const key of Object.keys(state.placements)) if (key.startsWith(prefix)) delete state.placements[key];
+  } else {
+    return res.status(400).json({ error: 'seatKey, guestId, or table required' });
+  }
+  saveState(state);
+  res.json({ ok: true, placements: placementsView() });
+});
+
+// Auto-fill a table: lock in the solver's current best picks for its open seats.
+// Because the solver already arranges high-affinity guests around any pinned
+// anchors, this just freezes that arrangement for the chosen table.
+app.post('/api/placements/autofill', (req, res) => {
+  const { table } = req.body || {};
+  if (!Number.isInteger(table) || table < 0 || table >= config.numTables) {
+    return res.status(400).json({ error: 'bad table' });
+  }
+  const result = bestMultiTableArrangement(
+    state.pairs, guests, config.numTables, config.seatsPerTable, state.constraints, state.placements,
+  );
+  const td = result.tables[table];
+  if (td) {
+    const lockSide = (sideArr, lockedArr, side) => {
+      for (let pos = 0; pos < sideArr.length; pos++) {
+        if (lockedArr[pos]) continue; // already a manual placement
+        const g = sideArr[pos];
+        if (!g) continue;
+        for (const [key, gid] of Object.entries(state.placements)) if (gid === g.id) delete state.placements[key];
+        state.placements[`${table}:${side}:${pos}`] = g.id;
+      }
+    };
+    lockSide(td.sideA, td.lockedA, 'A');
+    lockSide(td.sideB, td.lockedB, 'B');
+  }
+  saveState(state);
+  res.json({ ok: true, placements: placementsView() });
+});
+
 app.get('/api/guests', (_req, res) => res.json({ guests }));
+
+// ---- CSV import (Zola guest-list export) ------------------------------------
+// Minimal RFC-4180-ish parser: handles quoted fields, escaped quotes, CRLF.
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQ = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else if (c !== '\r') {
+      field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+
+app.post('/api/guests/import', (req, res) => {
+  const { csv, replace = false, groupParties = true } = req.body || {};
+  if (!csv || typeof csv !== 'string') return res.status(400).json({ error: 'csv text required' });
+
+  const rows = parseCSV(csv);
+  if (rows.length < 2) return res.status(400).json({ error: 'need a header row and at least one guest' });
+
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const col = (cands) => header.findIndex((h) => cands.includes(h));
+  const iFull = col(['name', 'full name', 'guest name', 'guest']);
+  const iFirst = col(['first name', 'first', 'firstname', 'guest first name']);
+  const iLast = col(['last name', 'last', 'lastname', 'guest last name']);
+  const iParty = col(['party', 'party name', 'group', 'household', 'group name']);
+  const iRel = col(['relationship', 'guest type', 'type', 'tag', 'tags']);
+  const iSide = col(['side']);
+  const iNotes = col(['notes', 'note', 'meal', 'meal choice', 'dietary', 'rsvp']);
+  // Per-event RSVP column. Zola names it after the event ("Wedding"); only
+  // people who said yes to the wedding belong in the swiping pool.
+  const iWedding = header.findIndex((h) => h === 'wedding' || h.includes('wedding'));
+
+  if (iFull < 0 && iFirst < 0) {
+    return res.status(400).json({ error: 'could not find a name column (expected "Name" or "First Name")' });
+  }
+
+  const isAttending = (v) => {
+    const s = (v || '').trim().toLowerCase();
+    if (!s) return false;
+    return /^(attend|accept|yes|coming|going|confirm)/.test(s);
+  };
+
+  const parsed = [];
+  const partyMap = new Map();
+  let skippedNotAttending = 0;
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    const at = (idx) => (idx >= 0 ? (cells[idx] || '').trim() : '');
+    let name = iFull >= 0 ? at(iFull) : '';
+    if (!name) name = [at(iFirst), at(iLast)].filter(Boolean).join(' ').trim();
+    if (!name) continue;
+    // Only keep guests attending the wedding (when a wedding RSVP column exists).
+    if (iWedding >= 0 && !isAttending(at(iWedding))) { skippedNotAttending++; continue; }
+    const guest = {
+      id: randomUUID().slice(0, 8),
+      name: name.slice(0, 60),
+      side: at(iSide).slice(0, 40),
+      relationship: at(iRel).slice(0, 60),
+      notes: at(iNotes).slice(0, 280),
+      funFact: '',
+    };
+    const party = at(iParty);
+    if (party) {
+      if (!partyMap.has(party)) partyMap.set(party, []);
+      partyMap.get(party).push(guest.id);
+    }
+    parsed.push(guest);
+  }
+
+  if (parsed.length === 0) return res.status(400).json({ error: 'no named guests found in CSV' });
+
+  let added = 0;
+  if (replace) {
+    guests = parsed;
+    state.pairs = {};
+    state.constraints = { adjacent: [], groups: [] };
+    added = parsed.length;
+  } else {
+    const existing = new Set(guests.map((g) => g.name.toLowerCase()));
+    for (const g of parsed) {
+      if (existing.has(g.name.toLowerCase())) continue;
+      guests.push(g);
+      existing.add(g.name.toLowerCase());
+      added++;
+    }
+  }
+  saveGuests(guests);
+
+  // Optionally keep each Zola "party" (household) at the same table.
+  let groupsCreated = 0;
+  if (groupParties) {
+    const present = new Set(guests.map((g) => g.id));
+    for (const ids of partyMap.values()) {
+      const real = ids.filter((id) => present.has(id));
+      if (real.length >= 2) { state.constraints.groups.push(real); groupsCreated++; }
+    }
+  }
+  saveState(state);
+
+  res.json({
+    ok: true,
+    added,
+    total: guests.length,
+    groupsCreated,
+    skippedNotAttending,
+    weddingColumn: iWedding >= 0,
+  });
+});
 
 app.post('/api/guests', (req, res) => {
   const b = req.body || {};
@@ -186,8 +540,11 @@ app.get('/api/matrix', (_req, res) => {
   res.json({ guests: guests.map((g) => ({ id: g.id, name: g.name })), matrix });
 });
 
+// Healthcheck for Railway (and any uptime monitor).
+app.get('/health', (_req, res) => res.json({ ok: true, guests: guests.length }));
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  🪑  SeatMate running:  http://localhost:${PORT}\n`);
   console.log(`  Loaded ${guests.length} guests. Open the URL on your iPhone (same Wi-Fi) to start swiping.\n`);
 });
