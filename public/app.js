@@ -55,6 +55,37 @@ async function refreshGuests() {
   } catch { /* offline — sheet falls back to free text */ }
 }
 
+// ---------- event / dataset picker ----------
+// Lets you choose which event to seat (Wedding, Welcome Party, …). Each event
+// keeps its own guest list and its own swiping slate on the server.
+async function loadEventPicker() {
+  const wrap = $('eventPick');
+  const sel = $('eventSelect');
+  if (!wrap || !sel) return;
+  try {
+    const { datasets = [], active } = await api('/api/datasets');
+    if (datasets.length <= 1) { wrap.classList.add('hidden'); return; } // nothing to choose
+    sel.innerHTML = datasets
+      .map((d) => `<option value="${esc(d.slug)}"${d.slug === active ? ' selected' : ''}>${esc(d.label)} · ${d.count} guest${d.count === 1 ? '' : 's'}</option>`)
+      .join('');
+    wrap.classList.remove('hidden');
+    sel.onchange = async () => {
+      sel.disabled = true;
+      try {
+        await api('/api/datasets/select', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: sel.value }),
+        });
+        await refreshGuests();
+      } finally {
+        sel.disabled = false;
+      }
+    };
+  } catch { wrap.classList.add('hidden'); }
+}
+loadEventPicker();
+
 // ---------- join ----------
 $('joinBtn').onclick = async () => {
   const name = $('nameInput').value.trim() || 'Anonymous';

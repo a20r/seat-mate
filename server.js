@@ -7,7 +7,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
-import { loadGuests, saveGuests, loadState, saveState, flush, loadConfig, saveConfig } from './lib/store.js';
+import {
+  loadGuests, saveGuests, loadState, saveState, flush, loadConfig, saveConfig,
+  listDatasets, getActiveSlug, setActiveSlug, resetWriteCache,
+} from './lib/store.js';
 import {
   applyVote,
   getPair,
@@ -30,10 +33,24 @@ const state = loadState();
 let config = loadConfig();
 
 // Older saved states predate constraints — make sure the shape is always there.
-if (!state.constraints) state.constraints = { adjacent: [], groups: [] };
-state.constraints.adjacent = state.constraints.adjacent || [];
-state.constraints.groups = state.constraints.groups || [];
-if (!state.placements) state.placements = {};
+function ensureStateShape() {
+  if (!state.constraints) state.constraints = { adjacent: [], groups: [] };
+  state.constraints.adjacent = state.constraints.adjacent || [];
+  state.constraints.groups = state.constraints.groups || [];
+  if (!state.placements) state.placements = {};
+}
+ensureStateShape();
+
+// Re-point the in-memory globals at whatever dataset is now active. `state` is
+// mutated in place (not reassigned) so every handler's closure keeps working.
+function reloadActive() {
+  guests = loadGuests();
+  const s = loadState();
+  for (const k of Object.keys(state)) delete state[k];
+  Object.assign(state, s);
+  ensureStateShape();
+  config = loadConfig();
+}
 
 const akey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
@@ -540,8 +557,39 @@ app.get('/api/matrix', (_req, res) => {
   res.json({ guests: guests.map((g) => ({ id: g.id, name: g.name })), matrix });
 });
 
+// ---- datasets / events ------------------------------------------------------
+// Each event (Wedding, Welcome Party, …) is its own dataset with its own guest
+// pool and its own fresh voting slate. List them and switch between them.
+app.get('/api/datasets', (_req, res) => {
+  res.json({ datasets: listDatasets(), active: getActiveSlug() });
+});
+
+app.post('/api/datasets/select', (req, res) => {
+  const slug = (req.body?.slug || '').toString();
+  if (!listDatasets().some((d) => d.slug === slug)) {
+    return res.status(404).json({ error: 'no such dataset' });
+  }
+  flush();            // persist the currently-active event's pending votes
+  resetWriteCache();  // drop the debounce cache so it can't leak across events
+  setActiveSlug(slug);
+  reloadActive();     // swap guests/state/config to the selected event
+  res.json({ ok: true, active: slug, guests: guests.length, config });
+});
+
+// Wipe just the votes/affinities/pins for the active event — a clean slate
+// without touching the guest list.
+app.post('/api/datasets/reset', (_req, res) => {
+  state.pairs = {};
+  state.voteLog = [];
+  state.raters = {};
+  state.constraints = { adjacent: [], groups: [] };
+  state.placements = {};
+  saveState(state);
+  res.json({ ok: true, active: getActiveSlug() });
+});
+
 // Healthcheck for Railway (and any uptime monitor).
-app.get('/health', (_req, res) => res.json({ ok: true, guests: guests.length }));
+app.get('/health', (_req, res) => res.json({ ok: true, guests: guests.length, active: getActiveSlug() }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
