@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#131810" />
+    <title>SeatMate — seating matchmaker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Join -->
+    <section id="view-join" class="view">
+      <div class="join-card">
+        <div class="logo">🪑🤍</div>
+        <h1>SeatMate</h1>
+        <p class="tagline">Swipe to design the seating chart. Right if they'd click at the table, left if not.</p>
+        <input id="nameInput" type="text" placeholder="Your name" autocomplete="name" maxlength="40" />
+        <button id="joinBtn" class="primary">Start swiping</button>
+        <button id="resultsLinkBtn" class="ghost">See the seating chart →</button>
+        <button id="importLinkBtn" class="ghost">Import guest list from Zola</button>
+      </div>
+    </section>
+
+    <!-- Swipe -->
+    <section id="view-swipe" class="view hidden">
+      <header class="topbar">
+        <button id="backToJoin" class="icon-btn" aria-label="Home">‹</button>
+        <div class="ego-line">
+          Who sits beside<br />
+          <button id="egoTap" class="ego-name-btn" aria-label="Pin who must sit with this person">
+            <strong id="egoName">—</strong><span class="caret">▾</span>
+          </button>
+        </div>
+        <button id="endBtn" class="end-btn">End</button>
+      </header>
+
+      <div class="progress">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+      <div id="progressText" class="progress-text"></div>
+
+      <div id="deck" class="deck">
+        <!-- card injected here -->
+      </div>
+
+      <div class="actions">
+        <button id="nopeBtn" class="action nope" aria-label="Bad match">✕</button>
+        <button id="skipBtn" class="action skip" aria-label="Not sure — skip">?</button>
+        <button id="likeBtn" class="action like" aria-label="Good match">♥</button>
+      </div>
+      <div class="hint">← / → rate · ↑ skip · ↓ switch person · tap <span id="hintEgo">the name</span> to pin</div>
+    </section>
+
+    <!-- Seat-together sheet -->
+    <section id="seatSheet" class="sheet hidden">
+      <div class="sheet-scrim"></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Seat with <em id="sheetEgo">—</em></div>
+        <p class="sheet-sub">Search any guest and tap to pin them to this person.</p>
+
+        <div class="seg" id="sheetMode">
+          <button class="seg-opt active" data-mode="adjacent">
+            <span class="seg-emoji">💍</span>
+            <span class="seg-lab">Right beside</span>
+            <span class="seg-cap">couples</span>
+          </button>
+          <button class="seg-opt" data-mode="group">
+            <span class="seg-emoji">👪</span>
+            <span class="seg-lab">Same table</span>
+            <span class="seg-cap">families</span>
+          </button>
+        </div>
+
+        <input id="sheetSearch" type="text" placeholder="Search guests…" autocomplete="off" />
+        <div id="guestList" class="guest-list"></div>
+
+        <div class="sheet-actions">
+          <button id="sheetDone" class="sheet-btn done-btn">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Switch-person picker -->
+    <section id="egoSheet" class="sheet hidden">
+      <div class="sheet-scrim"></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Seat someone else</div>
+        <p class="sheet-sub">Pick who you want to find neighbors for next.</p>
+        <input id="egoSearch" type="text" placeholder="Search guests…" autocomplete="off" />
+        <div id="egoList" class="guest-list"></div>
+        <div class="sheet-actions">
+          <button id="egoCancel" class="sheet-btn ghost-btn">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Seat-placement picker -->
+    <section id="placeSheet" class="sheet hidden">
+      <div class="sheet-scrim"></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Place at <em id="placeSeatLabel">—</em></div>
+        <p class="sheet-sub">Pin a guest to this exact seat. Everyone else is arranged around your picks.</p>
+        <input id="placeSearch" type="text" placeholder="Search guests…" autocomplete="off" />
+        <div id="placeList" class="guest-list"></div>
+        <div class="sheet-actions">
+          <button id="placeClear" class="sheet-btn ghost-btn">Clear seat</button>
+          <button id="placeCancel" class="sheet-btn done-btn">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Zola import sheet -->
+    <section id="importSheet" class="sheet hidden">
+      <div class="sheet-scrim"></div>
+      <div class="sheet-card">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Import from <em>Zola</em></div>
+        <p class="sheet-sub">In Zola, open <b>Guest List → Export</b> to download a CSV, then choose that file or paste its contents below.</p>
+
+        <label class="import-file">
+          <input id="importFile" type="file" accept=".csv,text/csv" />
+          <span id="importFileLabel">Choose CSV file…</span>
+        </label>
+
+        <textarea id="importText" placeholder="…or paste your CSV here"></textarea>
+
+        <label class="import-check"><input id="importReplace" type="checkbox" /> Replace current guest list</label>
+        <label class="import-check"><input id="importGroup" type="checkbox" checked /> Keep each party at the same table</label>
+
+        <div id="importMsg" class="sheet-msg"></div>
+
+        <div class="sheet-actions">
+          <button id="importCancel" class="sheet-btn ghost-btn">Cancel</button>
+          <button id="importGo" class="sheet-btn done-btn">Import</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="view-results" class="view hidden">
+      <header class="topbar">
+        <button id="backToSwipe" class="icon-btn" aria-label="Back">‹</button>
+        <div class="ego-line"><strong>Seating Chart</strong></div>
+        <button id="refreshResults" class="end-btn">↻</button>
+      </header>
+      <div id="resultsBody" class="results-body">
+        <p class="muted">Loading…</p>
+      </div>
+    </section>
+
+    <!-- Floating feedback button -->
+    <button id="feedbackFab" class="feedback-fab" aria-label="Send feedback">
+      <span class="feedback-fab-icon" aria-hidden="true">💬</span>
+      <span class="feedback-fab-label">Feedback</span>
+    </button>
+
+    <!-- Feedback modal -->
+    <div id="feedbackModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="feedbackHeading">
+      <div class="modal-scrim" data-close></div>
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2 id="feedbackHeading">Send feedback</h2>
+          <button class="modal-close" data-close aria-label="Close">✕</button>
+        </div>
+        <p class="modal-sub">Spotted a bug or have an idea? Submitting opens a pre-filled GitHub issue in a new tab.</p>
+
+        <label class="modal-label" for="feedbackTitle">Title</label>
+        <input id="feedbackTitle" type="text" maxlength="120" />
+
+        <label class="modal-label" for="feedbackBody">Details</label>
+        <textarea id="feedbackBody" placeholder="What happened, or what would you like to see?"></textarea>
+
+        <div class="modal-actions">
+          <button class="modal-btn ghost-btn" data-close>Cancel</button>
+          <button id="feedbackSubmit" class="modal-btn submit-btn">Open GitHub issue ↗</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
