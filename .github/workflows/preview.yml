@@ -1,0 +1,76 @@
+name: PR Preview
+
+# Deploys a static preview of each pull request to GitHub Pages under /pr-<N>/.
+#
+# One-time setup (cannot be done from a workflow):
+#   Repo Settings → Pages → "Build and deployment" → Source: "Deploy from a branch"
+#   → Branch: gh-pages  /  (root). Previews are then served from:
+#   https://a20r.github.io/seat-mate/pr-<N>/
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Allow pushing to gh-pages and commenting on the PR.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # SeatMate is a static frontend served by an Express server; there is no
+      # bundler build. Install deps (lockfile present) and run a build only if one
+      # is ever added. The publishable assets live in ./public.
+      - run: npm ci
+      - run: npm run build --if-present
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          destination_dir: pr-${{ github.event.pull_request.number }}
+          keep_files: true # don't wipe other PRs' preview directories
+
+      - name: Comment preview URL on the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const n = context.issue.number;
+            const url = `https://${context.repo.owner}.github.io/${context.repo.repo}/pr-${n}/`;
+            const marker = '<!-- pr-preview-url -->';
+            const body = `${marker}\n🚀 **Preview deployed:** ${url}\n\n_Static frontend only — the Express API (\`/api/*\`) is not served on GitHub Pages._`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: n,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: n,
+                body,
+              });
+            }

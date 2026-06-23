@@ -441,3 +441,136 @@ button {
   padding: 40px 20px;
   line-height: 1.6;
 }
+
+/* ---------- Feedback button + modal ---------- */
+.feedback-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--safe-bottom) + 16px);
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--sage), var(--sage-deep));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 8px 22px rgba(92, 122, 87, 0.45);
+}
+.feedback-fab:active {
+  transform: translateY(1px);
+}
+.feedback-fab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 16px) 16px calc(var(--safe-bottom) + 16px);
+}
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 18, 16, 0.66);
+  backdrop-filter: blur(2px);
+}
+.modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.modal-head h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+}
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+.modal-sub {
+  margin: 8px 0 18px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.modal-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+#feedbackTitle,
+#feedbackBody {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 15px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  margin-bottom: 16px;
+}
+#feedbackBody {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.5;
+}
+#feedbackTitle:focus,
+#feedbackBody:focus {
+  outline: 1px solid var(--sage);
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.modal-btn {
+  flex: 1;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 14px;
+}
+.ghost-btn {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+}
+.submit-btn {
+  background: linear-gradient(135deg, var(--sage), var(--sage-deep));
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(92, 122, 87, 0.4);
+}
+.submit-btn:active,
+.ghost-btn:active {
+  transform: translateY(1px);
+}

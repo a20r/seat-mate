@@ -251,6 +251,38 @@ function renderResults(r) {
   `;
 }
 
+// ---------- feedback ----------
+const GH_OWNER = 'a20r';
+const GH_REPO = 'seat-mate';
+
+function openFeedback() {
+  if (!$('feedbackTitle').value) $('feedbackTitle').value = 'SeatMate feedback';
+  $('feedbackModal').classList.remove('hidden');
+  $('feedbackBody').focus();
+}
+function closeFeedback() {
+  $('feedbackModal').classList.add('hidden');
+}
+
+$('feedbackFab').onclick = openFeedback;
+$('feedbackModal')
+  .querySelectorAll('[data-close]')
+  .forEach((el) => (el.onclick = closeFeedback));
+
+$('feedbackSubmit').onclick = () => {
+  const title = $('feedbackTitle').value.trim() || 'SeatMate feedback';
+  const body = $('feedbackBody').value.trim();
+  const url =
+    `https://github.com/${GH_OWNER}/${GH_REPO}/issues/new` +
+    `?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  window.open(url, '_blank', 'noopener');
+  closeFeedback();
+};
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('feedbackModal').classList.contains('hidden')) closeFeedback();
+});
+
 // ---------- boot ----------
 if (store.raterId) {
   startSwiping();
