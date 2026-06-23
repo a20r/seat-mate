@@ -7,6 +7,12 @@ if they'd be great neighbors, **left** if they wouldn't. Lots of people can swip
 at the same time — every vote feeds one shared affinity model. Hit **End** to see
 the affinities and an auto-generated suggested seating order.
 
+## Screenshots
+
+| Join | Swipe | Seating Chart |
+|------|-------|---------------|
+| ![Join screen](docs/screenshots/01-join.jpg) | ![Swipe screen](docs/screenshots/02-swipe.jpg) | ![Seating chart](docs/screenshots/03-seating-chart.jpg) |
+
 ## Run it
 
 ```bash
