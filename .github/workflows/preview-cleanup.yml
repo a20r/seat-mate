@@ -1,0 +1,52 @@
+name: PR Preview Cleanup
+
+# When a PR is closed (merged or not), remove its /pr-<N>/ directory from the
+# gh-pages branch so old previews don't accumulate.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+        continue-on-error: true
+
+      - name: Remove preview directory and push
+        run: |
+          set -e
+          DIR="pr-${{ github.event.pull_request.number }}"
+          if [ ! -d "$DIR" ]; then
+            echo "No preview directory '$DIR' to remove."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rm -rf "$DIR"
+          git commit -m "Remove preview for PR #${{ github.event.pull_request.number }}"
+          git push origin gh-pages
+
+      - name: Comment that preview was removed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🧹 Preview for this PR has been removed.',
+            });

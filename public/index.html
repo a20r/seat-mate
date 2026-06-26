@@ -160,6 +160,35 @@
       </div>
     </section>
 
+    <!-- Floating feedback button -->
+    <button id="feedbackFab" class="feedback-fab" aria-label="Send feedback">
+      <span class="feedback-fab-icon" aria-hidden="true">💬</span>
+      <span class="feedback-fab-label">Feedback</span>
+    </button>
+
+    <!-- Feedback modal -->
+    <div id="feedbackModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="feedbackHeading">
+      <div class="modal-scrim" data-close></div>
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2 id="feedbackHeading">Send feedback</h2>
+          <button class="modal-close" data-close aria-label="Close">✕</button>
+        </div>
+        <p class="modal-sub">Spotted a bug or have an idea? Submitting opens a pre-filled GitHub issue in a new tab.</p>
+
+        <label class="modal-label" for="feedbackTitle">Title</label>
+        <input id="feedbackTitle" type="text" maxlength="120" />
+
+        <label class="modal-label" for="feedbackBody">Details</label>
+        <textarea id="feedbackBody" placeholder="What happened, or what would you like to see?"></textarea>
+
+        <div class="modal-actions">
+          <button class="modal-btn ghost-btn" data-close>Cancel</button>
+          <button id="feedbackSubmit" class="modal-btn submit-btn">Open GitHub issue ↗</button>
+        </div>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>
