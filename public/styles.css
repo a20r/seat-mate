@@ -71,6 +71,35 @@ html, body {
   font-family: var(--sans);
 }
 
+/* event / dataset picker on the join screen */
+.event-pick { margin: 0 0 26px; text-align: left; }
+.event-pick label {
+  display: block;
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.event-pick select {
+  width: 100%;
+  padding: 12px 38px 12px 14px;
+  font-size: 16px;
+  font-family: var(--sans);
+  color: #fff;
+  background-color: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%23a9b3a0' d='M1 1l5 5 5-5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+.event-pick select:focus { outline: none; border-color: var(--gold); }
+.event-pick option { color: #111; }
+
 /* underline-only input */
 input[type="text"] {
   width: 100%;
